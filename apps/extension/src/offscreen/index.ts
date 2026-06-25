@@ -3,6 +3,28 @@ let mediaStream: MediaStream | null = null;
 const chunks: Blob[] = [];
 let uploadMeta: { projectId: string; ticketId: string } | null = null;
 
+// Forward console logs to service worker
+const originalLog = console.log;
+const originalError = console.error;
+
+console.log = (...args) => {
+  originalLog(...args);
+  chrome.runtime.sendMessage({
+    source: "testerbuddy:offscreen",
+    type: "offscreen:log",
+    text: args.join(" ")
+  }).catch(() => {});
+};
+
+console.error = (...args) => {
+  originalError(...args);
+  chrome.runtime.sendMessage({
+    source: "testerbuddy:offscreen",
+    type: "offscreen:error",
+    text: args.join(" ")
+  }).catch(() => {});
+};
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.target !== "offscreen") return false;
 

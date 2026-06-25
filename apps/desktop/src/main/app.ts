@@ -1,9 +1,26 @@
 import { app, BrowserWindow } from "electron";
 import { join } from "path";
+import { existsSync, writeFileSync, appendFileSync } from "fs";
 import { LocalServer, VideoUpload } from "./bridge/local-server";
 import { registerIpcHandlers } from "./ipc/handlers";
 import { DatabaseManager } from "./db/database";
 import { getFfmpegPath, log as logFfmpeg } from "./ffmpeg";
+
+// Redirect console logs to a file in userData
+try {
+  const logFilePath = join(app.getPath("userData"), "main.log");
+  writeFileSync(logFilePath, `--- APP START ---\n`);
+  
+  const logRedirect = (type: string, ...args: any[]) => {
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    appendFileSync(logFilePath, `[${new Date().toISOString()}] [${type}] ${msg}\n`);
+  };
+  
+  console.log = (...args) => logRedirect("INFO", ...args);
+  console.error = (...args) => logRedirect("ERROR", ...args);
+} catch (e) {
+  // ignore logging errors
+}
 
 function convertToMp4(win: BrowserWindow | undefined, webmPath: string, mp4Path: string, estimatedDurationSec?: number) {
   const fs = require("fs");
@@ -145,6 +162,16 @@ async function bootstrap() {
 
   server.hub.registry.onEvent((sessionId, event) => {
     const evt = event as any;
+
+    if (evt.type === "offscreen:log") {
+      console.log(evt.text);
+      return;
+    }
+
+    if (evt.type === "offscreen:error") {
+      console.error(evt.text);
+      return;
+    }
 
     if (evt.type === "video.waiting") {
       if (!win.isDestroyed()) {

@@ -70,12 +70,11 @@ export class Router {
 
     if ((cmd as any).type === "video.stop") {
       chrome.storage.local.remove("pendingVideoRequest");
-      if (!this.isRecording) return;
       this.isRecording = false;
       chrome.runtime.sendMessage({
         target: "offscreen",
         type: "stop"
-      });
+      }).catch(() => {});
       return;
     }
 
@@ -90,6 +89,18 @@ export class Router {
     if (m.source === "testerbuddy:event") {
       console.log("[router] received event from content script", m.event);
       this.handleEvent(m as { source: string; event: unknown });
+    }
+
+    if (m.source === "testerbuddy:offscreen" && m.type === "offscreen:log") {
+      this.ws?.send({ type: "offscreen:log", text: `[offscreen] ${m.text}` } as any);
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (m.source === "testerbuddy:offscreen" && m.type === "offscreen:error") {
+      this.ws?.send({ type: "offscreen:error", text: `[offscreen] ${m.text}` } as any);
+      sendResponse({ ok: true });
+      return;
     }
 
     if (m.source === "testerbuddy:picker" && m.type === "stream-selected") {

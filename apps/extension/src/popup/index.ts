@@ -75,8 +75,12 @@ chrome.storage.local.get("pendingVideoRequest").then(({ pendingVideoRequest }) =
             type: "stream-selected",
             streamId
           });
+          setTimeout(() => {
+            window.close();
+          }, 1000);
+        } else {
+          window.close();
         }
-        window.close();
       }
     );
     return;
