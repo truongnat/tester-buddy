@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>TesterBuddy</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 300px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      color: #182024;
+      background: #F5F7F8;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px;
+      background: #fff;
+      border-bottom: 1px solid #D9E1E4;
+    }
+    .logo {
+      width: 26px; height: 26px;
+      background: #0F9F8F;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 14px;
+    }
+    .header-text { flex: 1; }
+    .header-text h3 { font-size: 13px; font-weight: 600; line-height: 1.2; }
+    .header-text p  { font-size: 11px; color: #687378; }
+
+    /* ── Status banner ── */
+    .status-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      margin: 10px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .status-banner.connected    { background: #e8f8f0; color: #1F9D55; border: 1px solid #b7e8cd; }
+    .status-banner.disconnected { background: #fef8ec; color: #C27C0E; border: 1px solid #f5dfa0; }
+    .status-banner.no-token     { background: #EDF2F4; color: #687378; border: 1px solid #D9E1E4; }
+    .status-banner.error        { background: #fef0f0; color: #E5383B; border: 1px solid #f5babb; }
+    .status-icon { font-size: 16px; }
+    .status-text p.label { font-weight: 600; font-size: 12px; }
+    .status-text p.hint  { font-weight: 400; font-size: 11px; opacity: 0.85; margin-top: 1px; }
+
+    /* ── Body ── */
+    .body { padding: 0 10px 10px; }
+
+    /* ── Form ── */
+    .form-section { margin-bottom: 8px; }
+    .form-label { font-size: 11px; font-weight: 500; color: #687378; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 5px; }
+    .input-row { display: flex; gap: 6px; }
+    input[type=text] {
+      flex: 1;
+      border: 1px solid #D9E1E4;
+      border-radius: 6px;
+      padding: 7px 9px;
+      font-size: 12px;
+      font-family: "JetBrains Mono", "Menlo", monospace;
+      background: #fff;
+      color: #182024;
+      transition: border-color 0.15s;
+    }
+    input[type=text]:focus { outline: none; border-color: #0F9F8F; box-shadow: 0 0 0 2px rgba(15,159,143,0.15); }
+    input[type=text]::placeholder { color: #aab3b7; font-family: system-ui, sans-serif; font-size: 12px; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 5px;
+      padding: 7px 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary  { background: #0F9F8F; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #0D8E7F; }
+    .btn-outline  { background: #fff; color: #687378; border: 1px solid #D9E1E4; }
+    .btn-outline:hover:not(:disabled) { background: #EDF2F4; }
+    .btn-danger   { background: #fff; color: #E5383B; border: 1px solid #f5babb; }
+    .btn-danger:hover:not(:disabled)  { background: #fef0f0; }
+    .btn-full { width: 100%; }
+    .btn-row  { display: flex; gap: 6px; margin-top: 6px; }
+
+    /* ── Divider ── */
+    .divider { height: 1px; background: #D9E1E4; margin: 10px 0; }
+
+    /* ── Port hint ── */
+    .port-hint { font-size: 11px; color: #aab3b7; text-align: center; padding-bottom: 4px; }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+    }
+
+    /* ── Recording dot ── */
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+    .rec-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #1F9D55;
+      animation: pulse 1.4s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">🧪</div>
+    <div class="header-text">
+      <h3>TesterBuddy</h3>
+      <p>Browser-Connected QA</p>
+    </div>
+    <div id="ws-dot"></div>
+  </div>
+
+  <!-- Status banner -->
+  <div id="banner" class="status-banner no-token">
+    <span class="status-icon" id="banner-icon">🔑</span>
+    <div class="status-text">
+      <p class="label" id="banner-label">Not connected</p>
+      <p class="hint"  id="banner-hint">Enter your pairing token to start</p>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="body">
+
+    <!-- Token input form (shown when no token) -->
+    <div id="form-section" class="form-section">
+      <div class="form-label">Pairing Token</div>
+      <div class="input-row">
+        <input id="token-input" type="text" placeholder="Paste token from TesterBuddy desktop…" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="btn-row">
+        <button id="btn-save" class="btn btn-primary btn-full">Connect</button>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:#687378;line-height:1.5;">
+        Open TesterBuddy desktop → Settings → copy the token.
+      </div>
+    </div>
+
+    <!-- Connected actions (shown when token exists) -->
+    <div id="connected-section" style="display:none">
+      <div class="btn-row">
+        <button id="btn-recheck" class="btn btn-outline" style="flex:1">
+          <span>↻</span> Recheck
+        </button>
+        <button id="btn-reset" class="btn btn-danger" style="flex:1">
+          Reset token
+        </button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="port-hint">127.0.0.1:17393</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

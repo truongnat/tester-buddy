@@ -1,0 +1,47 @@
+import { Server as HttpServer } from "http";
+import { WebSocketServer, WebSocket } from "ws";
+import type { PairingService } from "./pairing.service";
+import { ExtensionSessionRegistry } from "./extension-session-registry";
+
+export class WebSocketHub {
+  private wss?: WebSocketServer;
+  readonly registry = new ExtensionSessionRegistry();
+
+  constructor(private pairing: PairingService) {}
+
+  attach(server: HttpServer) {
+    this.wss = new WebSocketServer({ server });
+    this.wss.on("connection", (ws, req) => this.onConnection(ws, req));
+  }
+
+  private onConnection(ws: WebSocket, req: import("http").IncomingMessage) {
+    const token = new URL(req.url ?? "/", "http://localhost").searchParams.get("token");
+
+    if (!token || !this.pairing.validate(token)) {
+      ws.close(4001, "Unauthorized");
+      return;
+    }
+
+    const sessionId = this.registry.register(ws);
+    console.log(`[hub] Extension connected: ${sessionId}`);
+
+    ws.on("message", (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        console.log("[hub] received message:", msg);
+        this.registry.handleMessage(sessionId, msg);
+      } catch {
+        // ignore malformed
+      }
+    });
+
+    ws.on("close", () => this.registry.unregister(sessionId));
+  }
+
+  send(sessionId: string, payload: unknown) {
+    const ws = this.registry.getSocket(sessionId);
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(payload));
+    }
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.turbo/
+*.log
+.DS_Store
+Thumbs.db
+*.local
+
+# Bundled ffmpeg binary (downloaded by scripts/download-ffmpeg.ps1)
+apps/desktop/resources/ffmpeg.exe

@@ -1,0 +1,75 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Precision Light theme ───────────────────────────────────────── */
+:root {
+  --background:    #F5F7F8;
+  --surface:       #FFFFFF;
+  --surface-muted: #EDF2F4;
+  --text:          #182024;
+  --text-muted:    #687378;
+  --border:        #D9E1E4;
+  --primary:       #0F9F8F;
+  --primary-hover: #0D8E7F;
+  --error:         #E5383B;
+  --success:       #1F9D55;
+  --warning:       #C27C0E;
+
+  /* shadcn expected tokens (mapped to our palette) */
+  --background-shadcn:  var(--surface);
+  --foreground:         var(--text);
+  --muted:              var(--surface-muted);
+  --muted-foreground:   var(--text-muted);
+  --card:               var(--surface);
+  --card-foreground:    var(--text);
+  --popover:            var(--surface);
+  --popover-foreground: var(--text);
+  --primary-shadcn:     var(--primary);
+  --primary-foreground: #ffffff;
+  --destructive:        var(--error);
+  --destructive-foreground: #ffffff;
+  --ring:               var(--primary);
+  --input:              var(--border);
+  --radius:             6px;
+}
+
+/* ── Base reset ──────────────────────────────────────────────────── */
+@layer base {
+  * { box-sizing: border-box; border-color: #D9E1E4; }
+  body {
+    background-color: #F5F7F8;
+    color: #182024;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+  /* Allow text selection in content areas */
+  p, span, td, input, textarea { user-select: text; }
+}
+
+/* ── Utility: recording pulse ────────────────────────────────────── */
+@layer utilities {
+  .recording-dot {
+    @apply inline-block w-2 h-2 rounded-full bg-error;
+    animation: pulse-dot 1.2s ease-in-out infinite;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+/* ── Electron drag region ────────────────────────────────────────── */
+.titlebar { -webkit-app-region: drag; }
+.titlebar button, .titlebar a { -webkit-app-region: no-drag; }
