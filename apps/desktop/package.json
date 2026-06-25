@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "postinstall": "pwsh scripts/download-ffmpeg.ps1",
+    "postinstall": "node scripts/download-ffmpeg.cjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

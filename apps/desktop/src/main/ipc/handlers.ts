@@ -164,26 +164,6 @@ export function registerIpcHandlers(
     shell.showItemInFolder(filepath);
   });
 
-  ipcMain.handle(IPC.START_VIDEO, (_e, meta: { projectId: string; ticketId: string }) => {
-    const sessions = Array.from((hub.registry as any).sessions.values());
-    if (sessions.length > 0) {
-      sessions.sort((a: any, b: any) => b.connectedAt.getTime() - a.connectedAt.getTime());
-      hub.send((sessions[0] as any).id, {
-        type: "video.request",
-        projectId: meta.projectId,
-        ticketId: meta.ticketId
-      });
-    }
-  });
-
-  ipcMain.handle(IPC.STOP_VIDEO, () => {
-    const sessions = Array.from((hub.registry as any).sessions.values());
-    if (sessions.length > 0) {
-      sessions.sort((a: any, b: any) => b.connectedAt.getTime() - a.connectedAt.getTime());
-      hub.send((sessions[0] as any).id, { type: "video.stop" });
-    }
-  });
-
   hub.registry.onConnectionChange((count: number) => {
     if (!win.isDestroyed()) {
       win.webContents.send("bridge:connection-change", { count });

@@ -62,31 +62,6 @@ function checkConnection(token: string) {
   };
 }
 
-// Check for pending video recording request first
-chrome.storage.local.get("pendingVideoRequest").then(({ pendingVideoRequest }) => {
-  if (pendingVideoRequest) {
-    chrome.storage.local.remove("pendingVideoRequest");
-    chrome.desktopCapture.chooseDesktopMedia(
-      ["tab", "window"],
-      (streamId: string) => {
-        if (streamId) {
-          chrome.runtime.sendMessage({
-            source: "testerbuddy:picker",
-            type: "stream-selected",
-            streamId
-          });
-          setTimeout(() => {
-            window.close();
-          }, 1000);
-        } else {
-          window.close();
-        }
-      }
-    );
-    return;
-  }
-});
-
 chrome.storage.local.get("pairingToken").then(({ pairingToken }) => {
   if (pairingToken) checkConnection(pairingToken);
   else setState("no-token");

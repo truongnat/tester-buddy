@@ -13,8 +13,6 @@ contextBridge.exposeInMainWorld("testerbuddy", {
   exportBug: (report: any) => ipcRenderer.invoke(IPC.EXPORT_BUG, report),
   saveVideo: (buffer: Uint8Array, meta: any) => ipcRenderer.invoke(IPC.SAVE_VIDEO, buffer, meta),
   revealFile: (filepath: string) => ipcRenderer.invoke(IPC.REVEAL_FILE, filepath),
-  startVideo: (meta: { projectId: string; ticketId: string }) => ipcRenderer.invoke(IPC.START_VIDEO, meta),
-  stopVideo: () => ipcRenderer.invoke(IPC.STOP_VIDEO),
   onVideoSaved: (cb: (payload: { filepath: string }) => void) => {
     const subscription = (_e: any, payload: { filepath: string }) => cb(payload);
     ipcRenderer.on("session:video-saved", subscription);
@@ -27,20 +25,6 @@ contextBridge.exposeInMainWorld("testerbuddy", {
     ipcRenderer.on("session:video-progress", subscription);
     return () => {
       ipcRenderer.removeListener("session:video-progress", subscription);
-    };
-  },
-  onVideoWaiting: (cb: () => void) => {
-    const subscription = () => cb();
-    ipcRenderer.on("session:video-waiting", subscription);
-    return () => {
-      ipcRenderer.removeListener("session:video-waiting", subscription);
-    };
-  },
-  onVideoRecording: (cb: (payload: any) => void) => {
-    const subscription = (_e: any, payload: any) => cb(payload);
-    ipcRenderer.on("session:video-recording", subscription);
-    return () => {
-      ipcRenderer.removeListener("session:video-recording", subscription);
     };
   },
   onEvent: (cb: (payload: unknown) => void) => {

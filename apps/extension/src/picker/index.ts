@@ -1,12 +1,12 @@
 chrome.desktopCapture.chooseDesktopMedia(
-  ["tab", "window"],
-  (streamId: string) => {
+  ["screen"],
+  async (streamId: string) => {
     if (streamId) {
-      chrome.runtime.sendMessage({
+      await chrome.runtime.sendMessage({
         source: "testerbuddy:picker",
         type: "stream-selected",
         streamId
-      });
+      }).catch(() => {});
     }
     window.close();
   }

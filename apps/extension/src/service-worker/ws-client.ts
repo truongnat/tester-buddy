@@ -43,12 +43,17 @@ export class WsClient {
       console.log("[TesterBuddy] Bridge disconnected, retrying...");
       setTimeout(() => this.connect(), RECONNECT_DELAY_MS);
     };
-    this.ws.onerror = () => {}; // suppress — onclose handles retry
+    this.ws.onerror = (e) => {
+      console.error("[TesterBuddy] WebSocket error:", e);
+    };
     this.ws.onmessage = (e) => {
       try {
         const cmd: BrowserCommand = JSON.parse(e.data);
+        console.log("[ws] received command:", cmd.type);
         this.router.handleCommand(cmd);
-      } catch { /* ignore */ }
+      } catch (err) {
+        console.error("[ws] failed to parse message:", err);
+      }
     };
   }
 

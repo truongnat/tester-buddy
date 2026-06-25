@@ -6,5 +6,6 @@ dist/
 Thumbs.db
 *.local
 
-# Bundled ffmpeg binary (downloaded by scripts/download-ffmpeg.ps1)
+# Bundled ffmpeg binary (downloaded by scripts/download-ffmpeg.cjs)
+apps/desktop/resources/ffmpeg
 apps/desktop/resources/ffmpeg.exe

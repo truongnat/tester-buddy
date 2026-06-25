@@ -13,6 +13,4 @@ export const IPC = {
   DELETE_BUG_REPORT: "bug:delete",
   SAVE_VIDEO: "video:save",
   REVEAL_FILE: "file:reveal",
-  START_VIDEO: "video:start",
-  STOP_VIDEO: "video:stop",
 } as const;

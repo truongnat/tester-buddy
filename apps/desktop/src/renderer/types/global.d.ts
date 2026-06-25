@@ -14,12 +14,8 @@ declare global {
       exportBug: (report: any) => Promise<{ success: boolean; filePath?: string }>;
       saveVideo: (buffer: Uint8Array, meta: { tabId: string; projectId: string; ticketId: string }) => Promise<string>;
       revealFile: (filepath: string) => Promise<void>;
-      startVideo: (meta: { projectId: string; ticketId: string }) => Promise<void>;
-      stopVideo: () => Promise<void>;
       onVideoSaved: (cb: (payload: { filepath: string }) => void) => (() => void);
       onVideoProgress: (cb: (payload: { progress: number }) => void) => (() => void);
-      onVideoWaiting: (cb: () => void) => (() => void);
-      onVideoRecording: (cb: (payload: any) => void) => (() => void);
       onEvent: (cb: (payload: any) => void) => (() => void);
       onConnectionChange: (cb: (count: number) => void) => (() => void);
     };

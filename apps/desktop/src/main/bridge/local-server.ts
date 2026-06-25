@@ -80,8 +80,10 @@ export class LocalServer {
         fs.mkdirSync(targetDir, { recursive: true });
       }
 
-      const webmPath = path.join(targetDir, "video.webm");
-      const mp4Path = path.join(targetDir, "video.mp4");
+      const ts = Date.now();
+      const rand = Math.random().toString(36).substring(2, 6);
+      const webmPath = path.join(targetDir, `video_${ts}_${rand}.webm`);
+      const mp4Path = path.join(targetDir, `video_${ts}_${rand}.mp4`);
 
       fs.writeFile(webmPath, buffer, (err: any) => {
         if (err) {

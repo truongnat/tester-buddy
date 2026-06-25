@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../lib/cn";
 import type { BrowserEvent } from "@testerbuddy/protocol";
+import React from "react";
 
 type TimelineEntry = { ts: number; event: BrowserEvent };
 
@@ -134,38 +135,89 @@ export function LiveSessionScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortNewestFirst, setSortNewestFirst] = useState(true);
   const [videoRecording, setVideoRecording] = useState(false);
-  const [videoWaiting, setVideoWaiting] = useState(false);
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [modalProjectId, setModalProjectId] = useState("project-1");
   const [modalTicketId, setModalTicketId] = useState("ticket-101");
   const [isConverting, setIsConverting] = useState(false);
-  const [conversionProgress, setConversionProgress] = useState(0);
   const [conversionResultPath, setConversionResultPath] = useState<string | null>(null);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordMetaRef = useRef({ projectId: "", ticketId: "" });
 
 
   const startVideoRecording = async (projId: string, tickId: string) => {
     try {
-      if (window.testerbuddy?.startVideo) {
-        await window.testerbuddy.startVideo({ projectId: projId, ticketId: tickId });
-      }
+      recordedChunksRef.current = [];
+      recordMetaRef.current = { projectId: projId, ticketId: tickId };
+      setConversionResultPath(null);
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      mediaStreamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+        ? "video/webm;codecs=vp9"
+        : MediaRecorder.isTypeSupported("video/webm;codecs=vp8")
+        ? "video/webm;codecs=vp8"
+        : "video/webm";
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+
+        const blob = new Blob(recordedChunksRef.current, { type: "video/webm" });
+        const buffer = await blob.arrayBuffer();
+        const meta = recordMetaRef.current;
+
+        setIsConverting(true);
+        try {
+          const result = await window.testerbuddy?.saveVideo(
+            new Uint8Array(buffer),
+            { tabId: "", projectId: meta.projectId, ticketId: meta.ticketId }
+          );
+          if (result) {
+            setConversionResultPath(result);
+          }
+        } catch (err) {
+          console.error("Failed to save video:", err);
+        } finally {
+          setIsConverting(false);
+          setVideoRecording(false);
+        }
+
+        mediaRecorderRef.current = null;
+        mediaStreamRef.current = null;
+      };
+
+      recorder.onerror = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setVideoRecording(false);
+        mediaRecorderRef.current = null;
+        mediaStreamRef.current = null;
+      };
+
+      recorder.start();
+      setVideoRecording(true);
     } catch (err: any) {
+      if (err.name === "NotAllowedError" || err.name === "AbortError") {
+        // User cancelled the picker — do nothing
+        return;
+      }
       console.error("Failed to start video recording:", err);
       alert("Failed to start video recording: " + (err?.message || err));
     }
   };
 
-  const stopVideoRecording = async () => {
-    try {
-      if (window.testerbuddy?.stopVideo) {
-        setIsConverting(true);
-        setConversionProgress(0);
-        await window.testerbuddy.stopVideo();
-        setVideoRecording(false);
-        setVideoWaiting(false);
-      }
-    } catch (err: any) {
-      console.error("Failed to stop video recording:", err);
-      setIsConverting(false);
+  const stopVideoRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
     }
   };
 
@@ -193,31 +245,8 @@ export function LiveSessionScreen() {
       setEvents((prev) => [...prev, { ts, event }]);
     });
 
-    const unsubscribeVideo = window.testerbuddy?.onVideoSaved(({ filepath }: { filepath: string }) => {
-      setIsConverting(false);
-      setConversionResultPath(filepath);
-      sessionStorage.setItem("testerbuddy:temp_video", filepath);
-    });
-
-    const unsubscribeProgress = window.testerbuddy?.onVideoProgress(({ progress }: { progress: number }) => {
-      setConversionProgress(progress);
-    });
-
-    const unsubscribeWaiting = window.testerbuddy?.onVideoWaiting(() => {
-      setVideoWaiting(true);
-    });
-
-    const unsubscribeRecording = window.testerbuddy?.onVideoRecording(() => {
-      setVideoWaiting(false);
-      setVideoRecording(true);
-    });
-
     return () => {
       if (unsubscribe) unsubscribe();
-      if (unsubscribeVideo) unsubscribeVideo();
-      if (unsubscribeProgress) unsubscribeProgress();
-      if (unsubscribeWaiting) unsubscribeWaiting();
-      if (unsubscribeRecording) unsubscribeRecording();
     };
   }, []);
 
@@ -518,25 +547,6 @@ export function LiveSessionScreen() {
           </div>
         </div>
       )}
-      {/* Toast: waiting for user to click extension icon */}
-      {videoWaiting && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-3 duration-300">
-          <div className="bg-amber-50 border border-amber-200 shadow-xl rounded-xl px-5 py-3 flex items-center gap-3 backdrop-blur-md">
-            <span className="w-3 h-3 rounded-full bg-amber-500 animate-pulse shrink-0" />
-            <div>
-              <p className="text-xs font-semibold text-amber-800">Click the TesterBuddy icon to select a tab for recording</p>
-              <p className="text-3xs text-amber-600 mt-0.5">A tab picker dialog will appear after clicking</p>
-            </div>
-            <button
-              onClick={() => { setVideoWaiting(false); window.testerbuddy?.stopVideo(); }}
-              className="text-amber-500 hover:text-amber-700 text-xs font-bold shrink-0 ml-2"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Mini notification in bottom-right corner for video conversion & save status */}
       {(isConverting || conversionResultPath) && (
         <div className="fixed bottom-6 right-6 z-50 w-80 bg-surface/95 border border-border/80 shadow-xl rounded-xl p-3.5 backdrop-blur-md animate-in fade-in slide-in-from-bottom-5 duration-300">
@@ -544,7 +554,7 @@ export function LiveSessionScreen() {
             <div className="flex items-center gap-3">
               <span className="w-4 h-4 shrink-0 rounded-full border-2 border-t-primary border-r-border/20 border-b-border/20 border-l-border/20 animate-spin" />
               <div className="flex-1 min-w-0">
-                <p className="text-2xs font-semibold text-text">Converting video ({conversionProgress}%)...</p>
+                <p className="text-2xs font-semibold text-text">Converting video...</p>
                 <p className="text-3xs text-text-muted mt-0.5">Processing tab recording to MP4</p>
               </div>
             </div>

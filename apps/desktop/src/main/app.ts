@@ -120,18 +120,9 @@ async function bootstrap() {
   const db = new DatabaseManager();
   await db.init();
 
-  const recordingStartTimes = new Map<string, number>();
-
   const server = new LocalServer();
   server.onVideoUpload((upload: VideoUpload) => {
-    let estimatedDurationSec = 0;
-    if (recordingStartTimes.size > 0) {
-      const startTimes = Array.from(recordingStartTimes.values());
-      const mostRecentStart = Math.max(...startTimes);
-      estimatedDurationSec = (Date.now() - mostRecentStart) / 1000;
-      recordingStartTimes.clear();
-    }
-    convertToMp4(win, upload.webmPath, upload.mp4Path, estimatedDurationSec);
+    convertToMp4(win, upload.webmPath, upload.mp4Path, 0);
   });
   await server.start();
 
@@ -147,13 +138,31 @@ async function bootstrap() {
 
   registerIpcHandlers(server.hub, server.pairing, win, db);
 
-  win.webContents.session.setDisplayMediaRequestHandler((_request, callback) => {
-    const { desktopCapturer } = require("electron");
-    desktopCapturer.getSources({ types: ["screen", "window"] }).then((sources) => {
-      if (sources.length > 0) {
+  win.webContents.session.setDisplayMediaRequestHandler(async (_request, callback) => {
+    const { desktopCapturer, dialog } = require("electron");
+    try {
+      const sources = await desktopCapturer.getSources({ types: ["screen"] });
+
+      if (sources.length === 1) {
         callback({ video: sources[0] });
+        return;
       }
-    });
+
+      const buttons = sources.map(s => `${s.name}`);
+      const { response } = await dialog.showMessageBox(win, {
+        type: "question",
+        buttons,
+        defaultId: 0,
+        title: "Select Screen to Record",
+        message: "Which screen would you like to capture?"
+      });
+
+      if (response >= 0) {
+        callback({ video: sources[response] });
+      }
+    } catch (err) {
+      console.error("[displayMedia] Failed to get sources:", err);
+    }
   });
 
   server.hub.registry.onSessionRegister((session) => {
@@ -170,65 +179,6 @@ async function bootstrap() {
 
     if (evt.type === "offscreen:error") {
       console.error(evt.text);
-      return;
-    }
-
-    if (evt.type === "video.waiting") {
-      if (!win.isDestroyed()) {
-        win.webContents.send("session:video-waiting");
-      }
-      return;
-    }
-
-    if (evt.type === "video.recording") {
-      recordingStartTimes.set(sessionId, Date.now());
-      if (!win.isDestroyed()) {
-        win.webContents.send("session:video-recording", evt);
-      }
-      return;
-    }
-
-    if (evt.type === "video.captured") {
-      const { base64, tabId, projectId, ticketId } = evt;
-      const base64Data = base64.replace(/^data:video\/[a-zA-Z0-9]+;base64,/, "");
-
-      const fs = require("fs");
-      const path = require("path");
-
-      const cleanTabId = String(tabId || "unknown").replace(/:/g, "_");
-      const cleanProjectId = String(projectId || "unknown").replace(/:/g, "_");
-      const cleanTicketId = String(ticketId || "unknown").replace(/:/g, "_");
-
-      const folderName = `${cleanTabId}_${cleanProjectId}_${cleanTicketId}`;
-      const documentsDir = app.getPath("documents");
-      const targetDir = path.join(documentsDir, "TesterBuddy", folderName);
-
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
-      }
-
-      const ts = Date.now();
-      const rand = Math.random().toString(36).substring(2, 6);
-      const webmPath = path.join(targetDir, `video_${ts}_${rand}.webm`);
-      const mp4Path = path.join(targetDir, `video_${ts}_${rand}.mp4`);
-
-      const startTime = recordingStartTimes.get(sessionId);
-      let estimatedDurationSec = 0;
-      if (startTime) {
-        estimatedDurationSec = (Date.now() - startTime) / 1000;
-        recordingStartTimes.delete(sessionId);
-      }
-
-      fs.writeFile(webmPath, Buffer.from(base64Data, "base64"), (err: any) => {
-        if (err) {
-          console.error("Failed to write WebM video:", err);
-          if (!win.isDestroyed()) {
-            win.webContents.send("session:video-saved", { filepath: webmPath });
-          }
-          return;
-        }
-        convertToMp4(win, webmPath, mp4Path, estimatedDurationSec);
-      });
       return;
     }
 

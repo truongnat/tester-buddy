@@ -1,9 +1,10 @@
+const UPLOAD_URL = "http://127.0.0.1:17393/api/upload-video";
+
 let mediaRecorder: MediaRecorder | null = null;
 let mediaStream: MediaStream | null = null;
 const chunks: Blob[] = [];
 let uploadMeta: { projectId: string; ticketId: string } | null = null;
 
-// Forward console logs to service worker
 const originalLog = console.log;
 const originalError = console.error;
 
@@ -63,24 +64,46 @@ async function startRecording(streamId: string) {
       }
     };
 
-    mediaRecorder.onstop = () => {
+    mediaRecorder.onstop = async () => {
       const blob = new Blob(chunks, { type: "video/webm" });
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
+
+      try {
+        const params = new URLSearchParams();
+        if (uploadMeta) {
+          params.set("projectId", uploadMeta.projectId);
+          params.set("ticketId", uploadMeta.ticketId);
+        }
+
+        const response = await fetch(`${UPLOAD_URL}?${params}`, {
+          method: "POST",
+          body: blob
+        });
+
+        if (!response.ok) {
+          console.error(`Upload failed: HTTP ${response.status}`);
+        }
+      } catch (err) {
+        console.error("Upload error:", err);
+      } finally {
         chrome.runtime.sendMessage({
           source: "testerbuddy:offscreen",
-          type: "upload:done",
-          base64,
-          meta: uploadMeta || { projectId: "unknown", ticketId: "unknown" }
-        });
-      };
-      reader.readAsDataURL(blob);
+          type: "upload:done"
+        }).catch(() => {});
+      }
     };
 
     mediaRecorder.start();
+
+    chrome.runtime.sendMessage({
+      source: "testerbuddy:offscreen",
+      type: "recording:started"
+    }).catch(() => {});
   } catch (err) {
-    console.error("Offscreen capture failure:", err);
+    console.error("Screen capture failed:", err);
+    chrome.runtime.sendMessage({
+      source: "testerbuddy:offscreen",
+      type: "recording:cancelled"
+    }).catch(() => {});
   }
 }
 
