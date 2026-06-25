@@ -1,6 +1,5 @@
 export class TabRegistry {
   private activeTabId?: number;
-  private authorizedTabId?: number;
   private tabs = new Set<number>();
   private tabMeta = new Map<number, { url: string; title: string }>();
 
@@ -24,19 +23,10 @@ export class TabRegistry {
     return this.tabMeta.get(tabId);
   }
 
-  authorize(tabId: number) {
-    this.authorizedTabId = tabId;
-  }
-
-  getAuthorizedTabId() {
-    return this.authorizedTabId;
-  }
-
   remove(tabId: number) {
     this.tabs.delete(tabId);
     this.tabMeta.delete(tabId);
     if (this.activeTabId === tabId) this.activeTabId = undefined;
-    if (this.authorizedTabId === tabId) this.authorizedTabId = undefined;
   }
 
   getActiveTabId() {

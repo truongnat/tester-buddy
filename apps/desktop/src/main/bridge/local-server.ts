@@ -1,8 +1,10 @@
 import { createServer, IncomingMessage, ServerResponse } from "http";
+import { existsSync, mkdirSync, writeFile } from "fs";
+import { join } from "path";
+import { app } from "electron";
+import { BRIDGE_PORT, BRIDGE_HOST, UPLOAD_PATH } from "@testerbuddy/protocol";
 import { WebSocketHub } from "./websocket-hub";
 import { PairingService } from "./pairing.service";
-
-const PORT = 17393;
 
 export interface VideoUpload {
   filePath: string;
@@ -36,7 +38,7 @@ export class LocalServer {
         return;
       }
 
-      if (req.method === "POST" && req.url && req.url.startsWith("/api/upload-video")) {
+      if (req.method === "POST" && req.url && req.url.startsWith(UPLOAD_PATH)) {
         this.handleUpload(req, res);
         return;
       }
@@ -47,10 +49,10 @@ export class LocalServer {
     this.hub.attach(server);
 
     await new Promise<void>((resolve) =>
-      server.listen(PORT, "127.0.0.1", resolve)
+      server.listen(BRIDGE_PORT, BRIDGE_HOST, resolve)
     );
 
-    console.log(`[bridge] Listening on 127.0.0.1:${PORT}`);
+    console.log(`[bridge] Listening on ${BRIDGE_HOST}:${BRIDGE_PORT}`);
     console.log(`[bridge] Pairing token: ${this.pairing.getToken()}`);
   }
 
@@ -63,29 +65,22 @@ export class LocalServer {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
-      const fs = require("fs");
-      const path = require("path");
-      const { app } = require("electron");
-
       const buffer = Buffer.concat(chunks);
-      const cleanTabId = String(tabId).replace(/:/g, "_");
-      const cleanProjectId = String(projectId).replace(/:/g, "_");
-      const cleanTicketId = String(ticketId).replace(/:/g, "_");
-
-      const folderName = `${cleanTabId}_${cleanProjectId}_${cleanTicketId}`;
+      const cleanName = (s: string) => String(s).replace(/:/g, "_");
+      const folderName = `${cleanName(tabId)}_${cleanName(projectId)}_${cleanName(ticketId)}`;
       const documentsDir = app.getPath("documents");
-      const targetDir = path.join(documentsDir, "TesterBuddy", folderName);
+      const targetDir = join(documentsDir, "TesterBuddy", folderName);
 
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
+      if (!existsSync(targetDir)) {
+        mkdirSync(targetDir, { recursive: true });
       }
 
       const ts = Date.now();
       const rand = Math.random().toString(36).substring(2, 6);
-      const webmPath = path.join(targetDir, `video_${ts}_${rand}.webm`);
-      const mp4Path = path.join(targetDir, `video_${ts}_${rand}.mp4`);
+      const webmPath = join(targetDir, `video_${ts}_${rand}.webm`);
+      const mp4Path = join(targetDir, `video_${ts}_${rand}.mp4`);
 
-      fs.writeFile(webmPath, buffer, (err: any) => {
+      writeFile(webmPath, buffer, (err: any) => {
         if (err) {
           console.error("[upload] Failed to save video:", err);
           res.writeHead(500);

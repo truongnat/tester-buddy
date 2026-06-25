@@ -1,3 +1,5 @@
+import { BRIDGE_WS_URL } from "@testerbuddy/protocol";
+
 const banner        = document.getElementById("banner")!;
 const bannerIcon    = document.getElementById("banner-icon")!;
 const bannerLabel   = document.getElementById("banner-label")!;
@@ -33,7 +35,7 @@ function setState(state: State) {
 
 function checkConnection(token: string) {
   setState("checking");
-  const ws = new WebSocket(`ws://127.0.0.1:17393?token=${token}`);
+  const ws = new WebSocket(`${BRIDGE_WS_URL}?token=${token}`);
   let resolved = false;
 
   const timer = setTimeout(() => {

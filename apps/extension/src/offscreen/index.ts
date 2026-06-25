@@ -1,4 +1,4 @@
-const UPLOAD_URL = "http://127.0.0.1:17393/api/upload-video";
+import { BRIDGE_UPLOAD_URL } from "@testerbuddy/protocol";
 
 let mediaRecorder: MediaRecorder | null = null;
 let mediaStream: MediaStream | null = null;
@@ -74,7 +74,7 @@ async function startRecording(streamId: string) {
           params.set("ticketId", uploadMeta.ticketId);
         }
 
-        const response = await fetch(`${UPLOAD_URL}?${params}`, {
+        const response = await fetch(`${BRIDGE_UPLOAD_URL}?${params}`, {
           method: "POST",
           body: blob
         });

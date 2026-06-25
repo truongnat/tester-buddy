@@ -1,7 +1,7 @@
 import type { BrowserEvent, BrowserCommand } from "@testerbuddy/protocol";
+import { BRIDGE_WS_URL } from "@testerbuddy/protocol";
 import type { Router } from "./router";
 
-const BRIDGE_HOST = "ws://127.0.0.1:17393";
 const RECONNECT_DELAY_MS = 3000;
 
 export class WsClient {
@@ -33,7 +33,7 @@ export class WsClient {
   private connect() {
     if (!this.token) return;
 
-    this.ws = new WebSocket(`${BRIDGE_HOST}?token=${this.token}`);
+    this.ws = new WebSocket(`${BRIDGE_WS_URL}?token=${this.token}`);
 
     this.ws.onopen = () => {
       console.log("[TesterBuddy] Connected to bridge");

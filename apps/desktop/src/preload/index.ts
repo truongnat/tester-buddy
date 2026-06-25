@@ -1,6 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC } from "../main/ipc/channels";
 
+function createListener<T>(channel: string) {
+  return (cb: (payload: T) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, payload: T) => cb(payload);
+    ipcRenderer.on(channel, handler);
+    return () => { ipcRenderer.removeListener(channel, handler); };
+  };
+}
+
 contextBridge.exposeInMainWorld("testerbuddy", {
   getPairingToken: () => ipcRenderer.invoke(IPC.GET_PAIRING_TOKEN),
   getConnectionCount: () => ipcRenderer.invoke(IPC.GET_CONNECTION_COUNT),
@@ -13,32 +21,8 @@ contextBridge.exposeInMainWorld("testerbuddy", {
   exportBug: (report: any) => ipcRenderer.invoke(IPC.EXPORT_BUG, report),
   saveVideo: (buffer: Uint8Array, meta: any) => ipcRenderer.invoke(IPC.SAVE_VIDEO, buffer, meta),
   revealFile: (filepath: string) => ipcRenderer.invoke(IPC.REVEAL_FILE, filepath),
-  onVideoSaved: (cb: (payload: { filepath: string }) => void) => {
-    const subscription = (_e: any, payload: { filepath: string }) => cb(payload);
-    ipcRenderer.on("session:video-saved", subscription);
-    return () => {
-      ipcRenderer.removeListener("session:video-saved", subscription);
-    };
-  },
-  onVideoProgress: (cb: (payload: { progress: number }) => void) => {
-    const subscription = (_e: any, payload: { progress: number }) => cb(payload);
-    ipcRenderer.on("session:video-progress", subscription);
-    return () => {
-      ipcRenderer.removeListener("session:video-progress", subscription);
-    };
-  },
-  onEvent: (cb: (payload: unknown) => void) => {
-    const subscription = (_e: any, payload: unknown) => cb(payload);
-    ipcRenderer.on("session:event", subscription);
-    return () => {
-      ipcRenderer.removeListener("session:event", subscription);
-    };
-  },
-  onConnectionChange: (cb: (count: number) => void) => {
-    const subscription = (_e: any, { count }: { count: number }) => cb(count);
-    ipcRenderer.on("bridge:connection-change", subscription);
-    return () => {
-      ipcRenderer.removeListener("bridge:connection-change", subscription);
-    };
-  },
+  onVideoSaved: createListener<{ filepath: string }>("session:video-saved"),
+  onVideoProgress: createListener<{ progress: number }>("session:video-progress"),
+  onEvent: createListener<unknown>("session:event"),
+  onConnectionChange: createListener<number>("bridge:connection-change"),
 });

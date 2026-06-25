@@ -1,9 +1,11 @@
-import { ipcMain, BrowserWindow } from "electron";
+import { ipcMain, BrowserWindow, app, dialog, shell } from "electron";
+import { writeFileSync, existsSync, mkdirSync } from "fs";
+import { join } from "path";
 import { IPC } from "./channels";
 import type { WebSocketHub } from "../bridge/websocket-hub";
 import type { PairingService } from "../bridge/pairing.service";
 import type { DatabaseManager } from "../db/database";
-import { getFfmpegPath } from "../ffmpeg";
+import { convertToMp4 } from "../ffmpeg-converter";
 
 export function registerIpcHandlers(
   hub: WebSocketHub,
@@ -48,59 +50,27 @@ export function registerIpcHandlers(
     return db.deleteBugReport(id);
   });
 
-  ipcMain.handle(IPC.SAVE_VIDEO, (_e, arrayBuffer: Uint8Array, meta: { tabId: string; projectId: string; ticketId: string }) => {
-    const fs = require("fs");
-    const path = require("path");
-    const { app } = require("electron");
-    const { exec } = require("child_process");
-
+  ipcMain.handle(IPC.SAVE_VIDEO, async (_e, arrayBuffer: Uint8Array, meta: { tabId: string; projectId: string; ticketId: string }) => {
     const { tabId, projectId, ticketId } = meta;
     const documentsDir = app.getPath("documents");
     
-    // Replace illegal Windows folder characters like colons with underscores
-    const cleanTabId = String(tabId || "unknown").replace(/:/g, "_");
-    const cleanProjectId = String(projectId || "unknown").replace(/:/g, "_");
-    const cleanTicketId = String(ticketId || "unknown").replace(/:/g, "_");
+    const cleanName = (s: string) => String(s || "unknown").replace(/:/g, "_");
+    const folderName = `${cleanName(tabId)}_${cleanName(projectId)}_${cleanName(ticketId)}`;
+    const targetDir = join(documentsDir, "TesterBuddy", folderName);
 
-    const folderName = `${cleanTabId}_${cleanProjectId}_${cleanTicketId}`;
-    const targetDir = path.join(documentsDir, "TesterBuddy", folderName);
-
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
+    if (!existsSync(targetDir)) {
+      mkdirSync(targetDir, { recursive: true });
     }
 
-    const webmPath = path.join(targetDir, "video.webm");
-    const mp4Path = path.join(targetDir, "video.mp4");
+    const webmPath = join(targetDir, "video.webm");
+    const mp4Path = join(targetDir, "video.mp4");
 
-    // Write raw WebM first
-    fs.writeFileSync(webmPath, Buffer.from(arrayBuffer));
+    writeFileSync(webmPath, Buffer.from(arrayBuffer));
 
-    console.log(`[ffmpeg] Starting manual save conversion of ${webmPath} to ${mp4Path}...`);
-    const startTime = Date.now();
-    return new Promise((resolve) => {
-      // Execute ffmpeg conversion
-      exec(`"${getFfmpegPath()}" -y -i "${webmPath}" -c:v libx264 -preset ultrafast -pix_fmt yuv420p "${mp4Path}"`, (error: any, stdout: string, stderr: string) => {
-        console.log(`[ffmpeg] stdout:\n${stdout}`);
-        console.log(`[ffmpeg] stderr:\n${stderr}`);
-        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-        if (error) {
-          console.error(`[ffmpeg] Conversion failed after ${duration}s or ffmpeg not in PATH. Error:`, error);
-          resolve(webmPath);
-        } else {
-          console.log(`[ffmpeg] Conversion succeeded in ${duration}s`);
-          // Cleanup webm upon successful conversion to mp4
-          try {
-            fs.unlinkSync(webmPath);
-          } catch (e) {}
-          resolve(mp4Path);
-        }
-      });
-    });
+    return convertToMp4(webmPath, mp4Path);
   });
 
   ipcMain.handle(IPC.EXPORT_BUG, async (_e, report: any) => {
-    const { dialog } = require("electron");
-    const fs = require("fs");
 
     const { filePath } = await dialog.showSaveDialog(win, {
       title: "Export Bug Report",
@@ -152,7 +122,7 @@ export function registerIpcHandlers(
         md += `- [Session Video File](file:///${report.video.replace(/\\/g, "/")})\n\n`;
       }
 
-      fs.writeFileSync(filePath, md, "utf-8");
+      writeFileSync(filePath, md, "utf-8");
       return { success: true, filePath };
     }
 
@@ -160,13 +130,12 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle(IPC.REVEAL_FILE, (_e, filepath: string) => {
-    const { shell } = require("electron");
     shell.showItemInFolder(filepath);
   });
 
   hub.registry.onConnectionChange((count: number) => {
     if (!win.isDestroyed()) {
-      win.webContents.send("bridge:connection-change", { count });
+      win.webContents.send("bridge:connection-change", count);
     }
   });
 }

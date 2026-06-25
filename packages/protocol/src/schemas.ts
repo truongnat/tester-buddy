@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const base = z.object({ type: z.string() });
-const HttpHeaderSchema = z.object({ name: z.string(), value: z.string() });
+export const HttpHeaderSchema = z.object({ name: z.string(), value: z.string() });
 
 export const BrowserEventSchema = z.discriminatedUnion("type", [
   base.extend({ type: z.literal("tab.connected"), tabId: z.number(), url: z.string(), title: z.string() }),

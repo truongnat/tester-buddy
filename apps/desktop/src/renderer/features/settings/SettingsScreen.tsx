@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Copy, Check, Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BRIDGE_HOST, BRIDGE_PORT } from "@testerbuddy/protocol";
 
 export function SettingsScreen() {
   const [token, setToken] = useState("");
@@ -48,7 +49,7 @@ export function SettingsScreen() {
           )}
         </div>
         <p className="text-xs text-text-muted">
-          Listening on <code className="font-mono">127.0.0.1:17393</code>
+          Listening on <code className="font-mono">{BRIDGE_HOST}:{BRIDGE_PORT}</code>
         </p>
       </section>
 
