@@ -5,6 +5,17 @@ import { redactValue } from "./page-bridge";
 export class EventRecorder {
   constructor(private bridge: PageBridge) {}
 
+  private sendNavigation(navigationType: "spa" | "reload" | "back_forward" | "new", to: string, from?: string) {
+    this.bridge.send({
+      type: "navigation",
+      from: from || document.referrer || window.location.href,
+      to: to || location.href,
+      navigationType,
+      title: document.title,
+      referrer: document.referrer || undefined,
+    } as any);
+  }
+
   start() {
     document.addEventListener("click", (e) => {
       const el = e.target as HTMLElement;
@@ -28,27 +39,8 @@ export class EventRecorder {
     }, { capture: true, passive: true });
 
     // SPA navigation via popstate / hashchange
-    window.addEventListener("popstate", () => {
-      this.bridge.send({
-        type: "navigation",
-        from: document.referrer || window.location.href,
-        to: location.href,
-        navigationType: "spa",
-        title: document.title,
-        referrer: document.referrer || undefined,
-      } as any);
-    });
-
-    window.addEventListener("hashchange", () => {
-      this.bridge.send({
-        type: "navigation",
-        from: document.referrer || window.location.href,
-        to: location.href,
-        navigationType: "spa",
-        title: document.title,
-        referrer: document.referrer || undefined,
-      } as any);
-    });
+    window.addEventListener("popstate", () => this.sendNavigation("spa", location.href));
+    window.addEventListener("hashchange", () => this.sendNavigation("spa", location.href));
 
     // Full page navigation via PerformanceNavigationTiming
     if (typeof PerformanceObserver !== "undefined") {
@@ -57,16 +49,11 @@ export class EventRecorder {
           for (const entry of list.getEntries()) {
             const nav = entry as PerformanceNavigationTiming;
             if (nav.type === "navigate" || nav.type === "reload" || nav.type === "back_forward") {
-              this.bridge.send({
-                type: "navigation",
-                from: nav.domContentLoadedEventStart
-                  ? (performance.getEntriesByType("navigation")[0] as any)?.name || ""
-                  : "",
-                to: nav.name || location.href,
-                navigationType: nav.type === "back_forward" ? "back_forward" : nav.type === "reload" ? "reload" : "new",
-                title: document.title,
-                referrer: document.referrer || undefined,
-              } as any);
+              const from = nav.domContentLoadedEventStart
+                ? (performance.getEntriesByType("navigation")[0] as any)?.name || ""
+                : "";
+              const navType = nav.type === "back_forward" ? "back_forward" : nav.type === "reload" ? "reload" : "new";
+              this.sendNavigation(navType, nav.name, from);
             }
           }
         });

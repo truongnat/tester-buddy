@@ -1,4 +1,5 @@
 import { BRIDGE_UPLOAD_URL } from "@testerbuddy/protocol";
+import { safeSend } from "@testerbuddy/shared";
 
 let mediaRecorder: MediaRecorder | null = null;
 let mediaStream: MediaStream | null = null;
@@ -8,22 +9,18 @@ let uploadMeta: { projectId: string; ticketId: string } | null = null;
 const originalLog = console.log;
 const originalError = console.error;
 
+function sendToSw(msg: Record<string, unknown>) {
+  safeSend(() => chrome.runtime.sendMessage({ source: "testerbuddy:offscreen", ...msg }));
+}
+
 console.log = (...args) => {
   originalLog(...args);
-  chrome.runtime.sendMessage({
-    source: "testerbuddy:offscreen",
-    type: "offscreen:log",
-    text: args.join(" ")
-  }).catch(() => {});
+  sendToSw({ type: "offscreen:log", text: args.join(" ") });
 };
 
 console.error = (...args) => {
   originalError(...args);
-  chrome.runtime.sendMessage({
-    source: "testerbuddy:offscreen",
-    type: "offscreen:error",
-    text: args.join(" ")
-  }).catch(() => {});
+  sendToSw({ type: "offscreen:error", text: args.join(" ") });
 };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -85,25 +82,16 @@ async function startRecording(streamId: string) {
       } catch (err) {
         console.error("Upload error:", err);
       } finally {
-        chrome.runtime.sendMessage({
-          source: "testerbuddy:offscreen",
-          type: "upload:done"
-        }).catch(() => {});
+        sendToSw({ type: "upload:done" });
       }
     };
 
     mediaRecorder.start();
 
-    chrome.runtime.sendMessage({
-      source: "testerbuddy:offscreen",
-      type: "recording:started"
-    }).catch(() => {});
+    sendToSw({ type: "recording:started" });
   } catch (err) {
     console.error("Screen capture failed:", err);
-    chrome.runtime.sendMessage({
-      source: "testerbuddy:offscreen",
-      type: "recording:cancelled"
-    }).catch(() => {});
+    sendToSw({ type: "recording:cancelled" });
   }
 }
 

@@ -2,6 +2,8 @@ import { WebSocket } from "ws";
 import { randomUUID } from "crypto";
 import type { BrowserEvent } from "@testerbuddy/protocol";
 
+export type IncomingEvent = BrowserEvent | { type: string; [key: string]: unknown };
+
 export interface ExtensionSession {
   id: string;
   ws: WebSocket;
@@ -12,7 +14,7 @@ export interface ExtensionSession {
 
 export class ExtensionSessionRegistry {
   private sessions = new Map<string, ExtensionSession>();
-  private eventListeners: Array<(sessionId: string, event: BrowserEvent) => void> = [];
+  private eventListeners: Array<(sessionId: string, event: IncomingEvent) => void> = [];
   private connListeners: Array<(count: number) => void> = [];
   private regListeners: Array<(session: ExtensionSession) => void> = [];
 
@@ -38,19 +40,27 @@ export class ExtensionSessionRegistry {
     return this.sessions.get(id)?.ws;
   }
 
+  get connectionCount(): number {
+    return this.sessions.size;
+  }
 
-  handleMessage(sessionId: string, msg: BrowserEvent) {
+  getAllSessions(): ExtensionSession[] {
+    return Array.from(this.sessions.values());
+  }
+
+
+  handleMessage(sessionId: string, msg: IncomingEvent) {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     if (msg.type === "tab.connected") {
-      session.activeTabId = msg.tabId;
-      session.activeUrl = msg.url;
+      session.activeTabId = msg.tabId as number;
+      session.activeUrl = msg.url as string;
     }
     console.log(`[registry] firing ${this.eventListeners.length} listeners for`, msg.type);
     this.eventListeners.forEach(fn => fn(sessionId, msg));
   }
 
-  onEvent(fn: (sessionId: string, event: BrowserEvent) => void) {
+  onEvent(fn: (sessionId: string, event: IncomingEvent) => void) {
     this.eventListeners.push(fn);
   }
 

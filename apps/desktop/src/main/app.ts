@@ -1,6 +1,8 @@
 import { app, BrowserWindow, desktopCapturer, dialog } from "electron";
 import { join } from "path";
 import { existsSync, writeFileSync, mkdirSync, appendFileSync } from "fs";
+import type { BrowserEvent } from "@testerbuddy/protocol";
+import type { IncomingEvent } from "./bridge/extension-session-registry";
 import { LocalServer, VideoUpload } from "./bridge/local-server";
 import { registerIpcHandlers } from "./ipc/handlers";
 import { DatabaseManager } from "./db/database";
@@ -82,28 +84,27 @@ async function bootstrap() {
     db.insertSession(session.id, session.activeTabId, session.activeUrl);
   });
 
-  server.hub.registry.onEvent((sessionId, event) => {
-    const evt = event as any;
-
-    if (evt.type === "offscreen:log") {
-      console.log(evt.text);
+  server.hub.registry.onEvent((sessionId, event: IncomingEvent) => {
+    if (event.type === "offscreen:log") {
+      console.log((event as unknown as { text: string }).text);
       return;
     }
 
-    if (evt.type === "offscreen:error") {
-      console.error(evt.text);
+    if (event.type === "offscreen:error") {
+      console.error((event as unknown as { text: string }).text);
       return;
     }
 
     const ts = Date.now();
-    const eventId = db.insertEvent(sessionId, event, ts);
+    const be = event as BrowserEvent;
+    const eventId = db.insertEvent(sessionId, be, ts);
 
-    if (event.type === "tab.connected" || event.type === "tab.updated") {
-      db.updateSessionTab(sessionId, event.tabId, event.url);
+    if (be.type === "tab.connected" || be.type === "tab.updated") {
+      db.updateSessionTab(sessionId, be.tabId, be.url);
     }
 
-    if (event.type === "screenshot.captured") {
-      const { fileId, dataUrl } = event;
+    if (be.type === "screenshot.captured") {
+      const { fileId, dataUrl } = be;
       if (dataUrl) {
         try {
           const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
@@ -114,7 +115,6 @@ async function bootstrap() {
           const filepath = join(screenshotsDir, `${fileId}.png`);
           writeFileSync(filepath, base64Data, "base64");
           db.insertScreenshot(fileId, eventId, filepath, ts);
-          (event as any).filepath = filepath;
         } catch (err) {
           console.error("Failed to save screenshot:", err);
         }
@@ -122,7 +122,7 @@ async function bootstrap() {
     }
 
     if (!win.isDestroyed()) {
-      win.webContents.send("session:event", { event, ts });
+      win.webContents.send("session:event", { event: be, ts });
     }
   });
 

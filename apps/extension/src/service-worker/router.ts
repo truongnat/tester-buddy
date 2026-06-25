@@ -23,7 +23,7 @@ export class Router {
 
   handleCommand(cmd: BrowserCommand) {
     if (cmd.type === "capture.visibleTab") {
-      chrome.tabs.captureVisibleTab(null as any, { format: "png" }, (dataUrl) => {
+      chrome.tabs.captureVisibleTab({ format: "png" }, (dataUrl) => {
         if (chrome.runtime.lastError || !dataUrl) {
           this.log("Capture failed:", chrome.runtime.lastError?.message);
           return;

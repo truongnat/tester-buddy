@@ -9,6 +9,8 @@ import React from "react";
 
 type TimelineEntry = { ts: number; event: BrowserEvent };
 
+const FALLBACK_META = { icon: Terminal, borderClass: "border-l-gray-300", textClass: "text-text-muted", label: "Unknown" };
+
 const EVENT_META: Record<string, { icon: any; borderClass: string; textClass: string; label: string }> = {
   "user.click":          { icon: MousePointer, borderClass: "border-l-primary",     textClass: "text-primary",     label: "Click" },
   "user.input":          { icon: Terminal,     borderClass: "border-l-text-muted",  textClass: "text-text-muted",  label: "Input" },
@@ -38,7 +40,7 @@ function EventRow({
   onSelect: () => void;
   onCheck: (e: React.MouseEvent) => void;
 }) {
-  const meta = EVENT_META[entry.event.type] ?? { icon: Terminal, borderClass: "border-l-gray-300", textClass: "text-text-muted", label: "Unknown" };
+  const meta = EVENT_META[entry.event.type] ?? FALLBACK_META;
   const Icon = meta.icon;
   const time = new Date(entry.ts).toLocaleTimeString("en-GB", { hour12: false });
   const isError = (entry.event.type === "console.log" && entry.event.level === "error") || (entry.event.type === "network.response" && entry.event.status >= 400);
@@ -613,7 +615,7 @@ export function LiveSessionScreen() {
 }
 
 function EventDetail({ entry }: { entry: TimelineEntry }) {
-  const meta = EVENT_META[entry.event.type] ?? { icon: Terminal, borderClass: "border-l-gray-300", textClass: "text-text-muted", label: "Unknown" };
+  const meta = EVENT_META[entry.event.type] ?? FALLBACK_META;
   const dataUrl = (entry.event as any).dataUrl;
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);

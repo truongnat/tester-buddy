@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow, app, dialog, shell } from "electron";
 import { writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
+import { cleanName } from "@testerbuddy/shared";
 import { IPC } from "./channels";
 import type { WebSocketHub } from "../bridge/websocket-hub";
 import type { PairingService } from "../bridge/pairing.service";
@@ -16,7 +17,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.GET_PAIRING_TOKEN, () => pairing.getToken());
 
   ipcMain.handle(IPC.GET_CONNECTION_COUNT, () =>
-    (hub.registry as any).sessions.size
+    hub.registry.connectionCount
   );
 
   ipcMain.handle(IPC.GET_SESSIONS, () => db.getSessions());
@@ -30,11 +31,10 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle(IPC.CAPTURE_SCREENSHOT, () => {
-    const sessions = Array.from((hub.registry as any).sessions.values());
+    const sessions = hub.registry.getAllSessions();
     if (sessions.length > 0) {
-      // Sort sessions by connection time (most recent first) to avoid sending commands to stale connections
-      sessions.sort((a: any, b: any) => b.connectedAt.getTime() - a.connectedAt.getTime());
-      hub.send((sessions[0] as any).id, { type: "capture.visibleTab" });
+      sessions.sort((a, b) => b.connectedAt.getTime() - a.connectedAt.getTime());
+      hub.send(sessions[0].id, { type: "capture.visibleTab" });
     }
   });
 
@@ -54,7 +54,6 @@ export function registerIpcHandlers(
     const { tabId, projectId, ticketId } = meta;
     const documentsDir = app.getPath("documents");
     
-    const cleanName = (s: string) => String(s || "unknown").replace(/:/g, "_");
     const folderName = `${cleanName(tabId)}_${cleanName(projectId)}_${cleanName(ticketId)}`;
     const targetDir = join(documentsDir, "TesterBuddy", folderName);
 

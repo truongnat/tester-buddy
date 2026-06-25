@@ -133,6 +133,10 @@ importers:
         version: 5.9.3
 
   packages/shared:
+    dependencies:
+      '@testerbuddy/protocol':
+        specifier: workspace:*
+        version: link:../protocol
     devDependencies:
       typescript:
         specifier: ^5.5.0

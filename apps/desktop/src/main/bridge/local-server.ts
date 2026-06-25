@@ -2,6 +2,7 @@ import { createServer, IncomingMessage, ServerResponse } from "http";
 import { existsSync, mkdirSync, writeFile } from "fs";
 import { join } from "path";
 import { app } from "electron";
+import { cleanName } from "@testerbuddy/shared";
 import { BRIDGE_PORT, BRIDGE_HOST, UPLOAD_PATH } from "@testerbuddy/protocol";
 import { WebSocketHub } from "./websocket-hub";
 import { PairingService } from "./pairing.service";
@@ -66,7 +67,6 @@ export class LocalServer {
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
       const buffer = Buffer.concat(chunks);
-      const cleanName = (s: string) => String(s).replace(/:/g, "_");
       const folderName = `${cleanName(tabId)}_${cleanName(projectId)}_${cleanName(ticketId)}`;
       const documentsDir = app.getPath("documents");
       const targetDir = join(documentsDir, "TesterBuddy", folderName);
