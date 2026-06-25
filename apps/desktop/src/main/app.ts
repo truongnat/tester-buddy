@@ -148,7 +148,7 @@ async function bootstrap() {
         return;
       }
 
-      const buttons = sources.map(s => `${s.name}`);
+      const buttons = sources.map((s: Electron.DesktopCapturerSource) => `${s.name}`);
       const { response } = await dialog.showMessageBox(win, {
         type: "question",
         buttons,
@@ -185,7 +185,7 @@ async function bootstrap() {
     const ts = Date.now();
     const eventId = db.insertEvent(sessionId, event, ts);
 
-    if (event.type === "tab.connected") {
+    if (event.type === "tab.connected" || event.type === "tab.updated") {
       db.updateSessionTab(sessionId, event.tabId, event.url);
     }
 

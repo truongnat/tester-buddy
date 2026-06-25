@@ -9,15 +9,18 @@ import React from "react";
 
 type TimelineEntry = { ts: number; event: BrowserEvent };
 
-const EVENT_META: Record<BrowserEvent["type"], { icon: any; borderClass: string; textClass: string; label: string }> = {
-  "user.click":         { icon: MousePointer, borderClass: "border-l-primary",    textClass: "text-primary",     label: "Click" },
-  "user.input":         { icon: Terminal,     borderClass: "border-l-text-muted", textClass: "text-text-muted",  label: "Input" },
-  "navigation":         { icon: Navigation,   borderClass: "border-l-indigo-500", textClass: "text-indigo-500",  label: "Navigate" },
-  "console.error":      { icon: AlertCircle,  borderClass: "border-l-error",      textClass: "text-error",       label: "Error" },
-  "network.request":    { icon: Globe,        borderClass: "border-l-gray-300",   textClass: "text-text-muted",  label: "Request" },
-  "network.response":   { icon: Globe,        borderClass: "border-l-gray-300",   textClass: "text-text-muted",  label: "Response" },
-  "screenshot.captured":{ icon: Camera,       borderClass: "border-l-success",    textClass: "text-success",     label: "Screenshot" },
-  "tab.connected":      { icon: Layers,       borderClass: "border-l-primary",    textClass: "text-primary",     label: "Tab" },
+const EVENT_META: Record<string, { icon: any; borderClass: string; textClass: string; label: string }> = {
+  "user.click":          { icon: MousePointer, borderClass: "border-l-primary",     textClass: "text-primary",     label: "Click" },
+  "user.input":          { icon: Terminal,     borderClass: "border-l-text-muted",  textClass: "text-text-muted",  label: "Input" },
+  "navigation":          { icon: Navigation,   borderClass: "border-l-indigo-500",  textClass: "text-indigo-500",  label: "Navigate" },
+  "console.log":         { icon: AlertCircle,  borderClass: "border-l-amber-500",   textClass: "text-amber-500",   label: "Console" },
+  "network.request":     { icon: Globe,        borderClass: "border-l-gray-300",    textClass: "text-text-muted",  label: "Request" },
+  "network.response":    { icon: Globe,        borderClass: "border-l-gray-300",    textClass: "text-text-muted",  label: "Response" },
+  "screenshot.captured": { icon: Camera,       borderClass: "border-l-success",     textClass: "text-success",     label: "Screenshot" },
+  "tab.connected":       { icon: Layers,       borderClass: "border-l-primary",     textClass: "text-primary",     label: "Tab" },
+  "tab.updated":         { icon: Layers,       borderClass: "border-l-primary",     textClass: "text-primary",     label: "Tab" },
+  "tab.switched":        { icon: Layers,       borderClass: "border-l-gray-400",    textClass: "text-gray-400",    label: "Tab Switch" },
+  "tab.closed":          { icon: Layers,       borderClass: "border-l-gray-400",    textClass: "text-gray-400",    label: "Tab Close" },
 };
 
 type FilterType = "all" | "errors" | "actions" | "network" | "navigation";
@@ -38,7 +41,7 @@ function EventRow({
   const meta = EVENT_META[entry.event.type] ?? { icon: Terminal, borderClass: "border-l-gray-300", textClass: "text-text-muted", label: "Unknown" };
   const Icon = meta.icon;
   const time = new Date(entry.ts).toLocaleTimeString("en-GB", { hour12: false });
-  const isError = entry.event.type === "console.error" || (entry.event.type === "network.response" && entry.event.status >= 400);
+  const isError = (entry.event.type === "console.log" && entry.event.level === "error") || (entry.event.type === "network.response" && entry.event.status >= 400);
 
   return (
     <div
@@ -110,18 +113,24 @@ function getEventSummary(e: BrowserEvent): string {
       return `Type "${e.valuePreview}" on ${inputSelector}`;
     case "navigation":
       return `Navigated to ${getSafePathname(e.to)}`;
-    case "console.error":
-      return e.message;
+    case "console.log":
+      return e.level === "error" ? e.message : `[${e.level}] ${e.message}`;
     case "network.request":
       return `${e.method} ${getSafePathname(e.url)}`;
     case "network.response":
       return `${e.status} — ${e.durationMs}ms`;
     case "tab.connected":
       return `Connected: ${getSafeHostname(e.url)}`;
+    case "tab.updated":
+      return `Tab updated: ${getSafeHostname(e.url)}`;
+    case "tab.switched":
+      return `Switched to tab #${e.tabId}`;
+    case "tab.closed":
+      return `Tab closed #${e.tabId}`;
     case "screenshot.captured":
       return `Screenshot Captured`;
     default:
-      return `Event: ${e.type}`;
+      return `Event: ${(e as any).type}`;
   }
 }
 
@@ -130,7 +139,7 @@ export function LiveSessionScreen() {
   const [recording, setRecording] = useState(false);
   const [events, setEvents] = useState<TimelineEntry[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<TimelineEntry | null>(null);
-  const [checkedTs, setCheckedTs] = useState<Set<number>>(new Set());
+  const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortNewestFirst, setSortNewestFirst] = useState(true);
@@ -250,33 +259,37 @@ export function LiveSessionScreen() {
     };
   }, []);
 
-  const handleCheck = (ts: number, e: React.MouseEvent) => {
+  const eventKey = (entry: TimelineEntry) => `${entry.ts}-${entry.event.type}`;
+
+  const handleCheck = (entry: TimelineEntry, e: React.MouseEvent) => {
     e.stopPropagation();
-    setCheckedTs((prev) => {
+    const key = eventKey(entry);
+    setCheckedKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(ts)) {
-        next.delete(ts);
+      if (next.has(key)) {
+        next.delete(key);
       } else {
-        next.add(ts);
+        next.add(key);
       }
       return next;
     });
   };
 
-  const clearSelection = () => setCheckedTs(new Set());
+  const clearSelection = () => setCheckedKeys(new Set());
 
   // Filter events
   const filteredEvents = events.filter((e) => {
     if (activeFilter !== "all") {
       if (activeFilter === "errors") {
-        const isErr = e.event.type === "console.error" || (e.event.type === "network.response" && e.event.status >= 400);
+        const isErr = (e.event.type === "console.log" && e.event.level === "error")
+          || (e.event.type === "network.response" && e.event.status >= 400);
         if (!isErr) return false;
       } else if (activeFilter === "actions") {
         if (e.event.type !== "user.click" && e.event.type !== "user.input") return false;
       } else if (activeFilter === "network") {
         if (e.event.type !== "network.request" && e.event.type !== "network.response") return false;
       } else if (activeFilter === "navigation") {
-        if (e.event.type !== "navigation" && e.event.type !== "tab.connected") return false;
+        if (e.event.type !== "navigation" && e.event.type !== "tab.connected" && e.event.type !== "tab.updated" && e.event.type !== "tab.switched" && e.event.type !== "tab.closed") return false;
       }
     }
 
@@ -298,7 +311,7 @@ export function LiveSessionScreen() {
   // Get active tab title/url for header display
   const activeTabEvent = [...events]
     .reverse()
-    .find((e) => e.event.type === "tab.connected");
+    .find((e) => e.event.type === "tab.connected" || e.event.type === "tab.updated");
   const activeTabTitle = activeTabEvent ? (activeTabEvent.event as any).title : null;
 
   return (
@@ -425,12 +438,12 @@ export function LiveSessionScreen() {
             ) : (
               sortedEvents.map((e) => (
                 <EventRow
-                  key={e.ts}
+                  key={eventKey(e)}
                   entry={e}
                   selected={selectedEvent === e}
-                  checked={checkedTs.has(e.ts)}
+                  checked={checkedKeys.has(eventKey(e))}
                   onSelect={() => setSelectedEvent(e)}
-                  onCheck={(evt) => handleCheck(e.ts, evt)}
+                  onCheck={(evt) => handleCheck(e, evt)}
                 />
               ))
             )}
@@ -453,13 +466,13 @@ export function LiveSessionScreen() {
       </div>
 
       {/* Luxury Glassmorphic Floating Action Bar */}
-      {checkedTs.size > 0 && (
+      {checkedKeys.size > 0 && (
         <div className="fixed bottom-6 left-96 right-6 mx-auto max-w-xl z-20">
           <div className="bg-surface/90 border border-border shadow-lg rounded-2xl p-3 flex items-center justify-between backdrop-blur-md animate-in fade-in slide-in-from-bottom-3 duration-300">
             <div className="flex items-center gap-2 pl-2">
               <CheckSquare size={14} className="text-primary" />
               <span className="text-xs font-semibold text-text">
-                {checkedTs.size} step{checkedTs.size > 1 ? "s" : ""} selected
+                {checkedKeys.size} step{checkedKeys.size > 1 ? "s" : ""} selected
               </span>
             </div>
             <div className="flex gap-2">
@@ -471,7 +484,7 @@ export function LiveSessionScreen() {
                 size="sm"
                 onClick={() => {
                   const selectedList = events
-                    .filter((e) => checkedTs.has(e.ts))
+                    .filter((e) => checkedKeys.has(eventKey(e)))
                     .sort((a, b) => a.ts - b.ts);
                   const steps = selectedList.map((e) => getEventSummary(e.event));
                   const screenshots = selectedList
@@ -604,6 +617,7 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
   const dataUrl = (entry.event as any).dataUrl;
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [curlCopied, setCurlCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"friendly" | "raw">("friendly");
 
   const cleanEvent = { ...entry.event };
@@ -624,6 +638,47 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
     </div>
   );
 
+  const copyAsCurl = (req: any) => {
+    let curl = `curl -X ${req.method} '${req.url}'`;
+    if (req.requestHeaders) {
+      for (const h of req.requestHeaders) {
+        curl += ` \\\n  -H '${h.name}: ${h.value}'`;
+      }
+    }
+    if (req.requestBody) {
+      curl += ` \\\n  -d '${req.requestBody.replace(/'/g, "\\'")}'`;
+    }
+    navigator.clipboard.writeText(curl);
+    setCurlCopied(true);
+    setTimeout(() => setCurlCopied(false), 2000);
+  };
+
+  const renderHeaders = (headers: { name: string; value: string }[] | undefined) => {
+    if (!headers || headers.length === 0) return <span className="italic text-text-muted">None</span>;
+    return (
+      <div className="space-y-0.5 max-h-40 overflow-y-auto">
+        {headers.map((h, i) => (
+          <div key={i} className="text-3xs font-mono leading-relaxed flex gap-2">
+            <span className="text-primary font-semibold shrink-0">{h.name}:</span>
+            <span className="text-text-muted break-all">{h.value}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderBody = (body: string | undefined, label: string) => {
+    if (!body) return <span className="italic text-text-muted">None</span>;
+    const isJson = body.trim().startsWith("{") || body.trim().startsWith("[");
+    return (
+      <div className="space-y-1">
+        <pre className="text-3xs font-mono text-text bg-bg border border-border/60 rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-all leading-normal">
+          {isJson ? (() => { try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; } })() : body}
+        </pre>
+      </div>
+    );
+  };
+
   const renderFriendlyDetails = () => {
     const e = entry.event;
     switch (e.type) {
@@ -631,7 +686,7 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
         return (
           <div className="divide-y divide-border/30">
             {renderProperty("Element Text", e.text ? <span className="font-semibold">"{e.text}"</span> : <span className="italic text-text-muted">None</span>)}
-            {renderProperty("Coordinates", <span className="font-mono text-2xs bg-bg px-1.5 py-0.5 rounded border border-border/60">X: {(e as any).x}, Y: {(e as any).y}</span>)}
+            {renderProperty("Coordinates", <span className="font-mono text-2xs bg-bg px-1.5 py-0.5 rounded border border-border/60">X: {e.x}, Y: {e.y}</span>)}
             {renderProperty("Selector", <code className="text-2xs font-mono text-primary bg-primary/5 px-1.5 py-0.5 rounded break-all">{e.selector}</code>)}
           </div>
         );
@@ -645,14 +700,27 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
       case "navigation":
         return (
           <div className="divide-y divide-border/30">
-            {renderProperty("Source URL", <span className="font-mono text-2xs text-text-muted">{e.from}</span>)}
-            {renderProperty("Destination URL", <span className="font-mono text-2xs text-primary font-semibold">{e.to}</span>)}
+            {renderProperty("Navigation Type", e.navigationType ? <Badge variant="primary" className="text-3xs uppercase font-bold">{e.navigationType}</Badge> : <span className="italic text-text-muted">Unknown</span>)}
+            {renderProperty("Source URL", <span className="font-mono text-2xs text-text-muted break-all">{e.from}</span>)}
+            {renderProperty("Destination URL", <span className="font-mono text-2xs text-primary font-semibold break-all">{e.to}</span>)}
+            {e.title && renderProperty("Page Title", <span className="font-semibold text-text">{e.title}</span>)}
+            {e.referrer && renderProperty("Referrer", <span className="font-mono text-2xs text-text-muted break-all">{e.referrer}</span>)}
           </div>
         );
-      case "console.error":
+      case "console.log": {
+        const levelColors: Record<string, string> = {
+          error: "text-error border-error/30 bg-error/5",
+          warn: "text-amber-600 border-amber-300 bg-amber-50",
+          info: "text-blue-600 border-blue-300 bg-blue-50",
+          debug: "text-gray-500 border-gray-300 bg-gray-50",
+          trace: "text-purple-600 border-purple-300 bg-purple-50",
+          log: "text-text-muted border-border/60 bg-bg",
+        };
+        const colorClass = levelColors[e.level] || levelColors.log;
         return (
           <div className="divide-y divide-border/30">
-            {renderProperty("Error Message", <span className="text-error font-semibold leading-relaxed">{e.message}</span>)}
+            {renderProperty("Level", <span className={`text-3xs uppercase font-bold px-2 py-0.5 rounded-full border ${colorClass}`}>{e.level}</span>)}
+            {renderProperty("Message", <span className="font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">{e.message}</span>)}
             {e.stack && renderProperty("Stack Trace", (
               <pre className="text-3xs font-mono text-text-muted p-2 bg-bg border border-border/60 rounded max-h-48 overflow-y-auto whitespace-pre-wrap break-all leading-normal">
                 {e.stack}
@@ -660,28 +728,74 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
             ))}
           </div>
         );
-      case "network.request":
+      }
+      case "network.request": {
         return (
           <div className="divide-y divide-border/30">
-            {renderProperty("Method", <Badge variant="primary" className="text-3xs uppercase font-bold">{e.method}</Badge>)}
-            {renderProperty("Endpoint URL", <span className="font-mono text-2xs text-text break-all">{e.url}</span>)}
+            <div className="flex items-center justify-between py-2.5 border-b border-border/40">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-text-muted capitalize tracking-tight">Method</span>
+                <Badge variant="primary" className="text-3xs uppercase font-bold">{e.method}</Badge>
+              </div>
+              <button
+                onClick={() => copyAsCurl(e)}
+                className="text-3xs font-bold text-primary hover:text-primary/80 border border-primary/30 rounded-md px-2 py-1 transition-colors shrink-0"
+                title="Copy as cURL command"
+              >
+                {curlCopied ? <span className="text-success">Copied!</span> : "cURL"}
+              </button>
+            </div>
+            {renderProperty("URL", <span className="font-mono text-2xs text-text break-all">{e.url}</span>)}
+            {e.queryParams && renderProperty("Query Params", (
+              <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                {Object.entries(e.queryParams).map(([k, v]) => (
+                  <div key={k} className="text-3xs font-mono leading-relaxed flex gap-2">
+                    <span className="text-primary font-semibold shrink-0">{k}:</span>
+                    <span className="text-text-muted break-all">{v}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+            {e.mimeType && renderProperty("Content Type", <span className="font-mono text-2xs text-text-muted">{e.mimeType}</span>)}
+            {renderProperty("Request Headers", renderHeaders(e.requestHeaders))}
+            {renderProperty("Request Body", renderBody(e.requestBody, "Request Body"))}
           </div>
         );
-      case "network.response":
+      }
+      case "network.response": {
         const isErr = e.status >= 400;
         return (
           <div className="divide-y divide-border/30">
-            {renderProperty("HTTP Status", <Badge variant={isErr ? "error" : "success"} className="text-3xs font-bold">{e.status}</Badge>)}
+            {renderProperty("HTTP Status", <Badge variant={isErr ? "error" : "success"} className="text-3xs font-bold">{e.status}{e.statusText ? ` ${e.statusText}` : ""}</Badge>)}
             {renderProperty("Duration", <span className="font-mono text-2xs font-semibold">{e.durationMs}ms</span>)}
-            {renderProperty("Method", <span className="font-semibold text-3xs uppercase text-text-muted font-mono">{e.method}</span>)}
-            {renderProperty("URL Endpoint", <span className="font-mono text-2xs text-text-muted break-all">{e.url}</span>)}
+            {e.errorType && renderProperty("Error Type", <Badge variant="error" className="text-3xs uppercase font-bold">{e.errorType}</Badge>)}
+            {e.contentType && renderProperty("Content Type", <span className="font-mono text-2xs text-text-muted break-all">{e.contentType}</span>)}
+            {e.size !== undefined && renderProperty("Size", <span className="font-mono text-2xs font-semibold">{e.size > 1024 ? `${(e.size / 1024).toFixed(1)} KB` : `${e.size} B`}</span>)}
+            {renderProperty("Response Headers", renderHeaders(e.responseHeaders))}
+            {renderProperty("Response Body", renderBody(e.responseBody, "Response Body"))}
           </div>
         );
+      }
       case "tab.connected":
+      case "tab.updated":
         return (
           <div className="divide-y divide-border/30">
             {renderProperty("Tab Title", <span className="font-semibold text-text">{e.title}</span>)}
             {renderProperty("URL", <span className="font-mono text-2xs text-primary break-all">{e.url}</span>)}
+            {e.type === "tab.updated" && renderProperty("Tab ID", <span className="font-mono text-2xs text-text-muted">{String(e.tabId)}</span>)}
+          </div>
+        );
+      case "tab.switched":
+        return (
+          <div className="divide-y divide-border/30">
+            {renderProperty("Tab ID", <span className="font-mono text-2xs font-semibold">{String(e.tabId)}</span>)}
+            {e.previousTabId !== undefined && renderProperty("Previous Tab ID", <span className="font-mono text-2xs text-text-muted">{String(e.previousTabId)}</span>)}
+          </div>
+        );
+      case "tab.closed":
+        return (
+          <div className="divide-y divide-border/30">
+            {renderProperty("Tab ID", <span className="font-mono text-2xs font-semibold">{String(e.tabId)}</span>)}
           </div>
         );
       default:
@@ -694,7 +808,7 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
       {/* Top Inspector Header */}
       <div className="flex items-center justify-between border-b border-border/50 pb-3 shrink-0">
         <div className="flex items-center gap-2">
-          <Badge variant={entry.event.type === "console.error" ? "error" : "primary"} className="px-2.5 py-0.5 rounded-md font-semibold text-2xs uppercase tracking-wider">
+          <Badge variant={(entry.event.type === "console.log" && entry.event.level === "error") ? "error" : "primary"} className="px-2.5 py-0.5 rounded-md font-semibold text-2xs uppercase tracking-wider">
             {meta.label}
           </Badge>
           <span className="text-xs text-text-muted font-mono font-medium">
