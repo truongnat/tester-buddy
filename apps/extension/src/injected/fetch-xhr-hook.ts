@@ -1,5 +1,12 @@
+declare const __TESTERBUDDY_BUILD_VERSION__: string;
+
 (function () {
-  const CHANNEL = "__testerbuddy__";
+  const HOOK_VERSION = __TESTERBUDDY_BUILD_VERSION__;
+  const GLOBAL_KEY = `__testerbuddy_injected__:${HOOK_VERSION}`;
+  if ((window as any)[GLOBAL_KEY]) return;
+  (window as any)[GLOBAL_KEY] = true;
+
+  const CHANNEL = `__testerbuddy__:${HOOK_VERSION}`;
   const MAX_BODY_SIZE = 5 * 1024; // 5KB — chrome.runtime.sendMessage limit ~64KB
 
   const EVENT_NETWORK_REQUEST = "network.request";
@@ -368,3 +375,5 @@
   window.history.pushState = wrapHistory("pushState");
   window.history.replaceState = wrapHistory("replaceState");
 })();
+
+

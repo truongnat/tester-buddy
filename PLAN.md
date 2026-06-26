@@ -123,15 +123,15 @@ fetch/XHR call in page
 
 **Goal:** User can select a time range from timeline and export a bug report.
 
-| Task | Priority | Notes |
-| ---- | -------- | ----- |
-| BugReport data model | P0 | |
-| Select events from timeline → attach to bug | P0 | |
-| Attach screenshots from session | P0 | |
-| Markdown export | P0 | `## Steps to Reproduce`, screenshot links |
-| HTML export with inline screenshots | P1 | |
-| Jira export (REST API, user provides token) | P2 | |
-| GitHub issue export | P2 | |
+| Task | Priority | Status | Notes |
+| ---- | -------- | ------ | ----- |
+| BugReport data model | P0 | ✅ Done | Structured steps persisted in SQLite |
+| Select events from timeline → attach to bug | P0 | ✅ Done | Selected timeline entries flow into the bug builder |
+| Attach screenshots from session | P0 | ✅ Done | Screenshot data URLs are carried into the draft |
+| Markdown export | P0 | ✅ Done | Exports structured steps plus screenshots |
+| HTML export with inline screenshots | P1 | ✅ Done | Self-contained HTML report with embedded evidence |
+| Jira export (REST API, user provides token) | P2 | ✅ Done | Jira REST export with authenticated issue creation |
+| GitHub issue export | P2 | ✅ Done | Creates GitHub issues via REST API |
 
 ### Phase 4 — Agent Control
 
@@ -144,8 +144,8 @@ fetch/XHR call in page
 | Content script executes: click, type, scroll, read.dom | P0 | |
 | DOM snapshot response | P1 | Returns simplified DOM tree |
 | Highlight overlay | P1 | Show which element is targeted |
-| Multi-step action sequences | P2 | |
-| Self-healing selector fallback | P3 | |
+| Multi-step action sequences | P2 | ✅ Done | Renderer accepts multi-line / JSON sequence scripts |
+| Self-healing selector fallback | P3 | ✅ Done | Heuristics fall back to id, data-testid, aria-label, placeholder, and text matches |
 
 ---
 
@@ -196,11 +196,7 @@ Agent (future): Local LLM or OpenAI function calling
 ## 8. Next Immediate Steps
 
 1. **Phase 1 & 2 Completed**: WS pairing, event relaying, SQLite DB persistence, tab title tracking, search, sort, and fullscreen screenshot zoom features are fully functional.
-2. **Move to Phase 3 — Bug Builder & Export**:
-   * Implement BugReport data models and persistence (SQLite table).
-   * Implement selecting events from the timeline and attaching them to the Bug Report.
-   * Attach screenshot attachments to the Bug Report.
-   * Build export functionalities: Markdown export (`## Steps to Reproduce` + screenshots).
+2. **Phase 3 complete**: Bug reports now persist structured timeline steps and screenshots, and the desktop app exports both Markdown and HTML reports.
 
 ---
 

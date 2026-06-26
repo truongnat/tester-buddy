@@ -15,13 +15,15 @@ export class WsClient {
   private ws?: WebSocket;
   private token?: string;
   private router: Router;
+  private onConnected?: () => void;
   private queue: BrowserEvent[] = [];
   private connecting = false;
   private reconnectAttempts = 0;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
 
-  constructor({ router }: { router: Router }) {
+  constructor({ router, onConnected }: { router: Router; onConnected?: () => void }) {
     this.router = router;
+    this.onConnected = onConnected;
     this.init();
 
     // Reconnect when user saves a new token in popup
@@ -60,6 +62,7 @@ export class WsClient {
       this.connecting = false;
       this.reconnectAttempts = 0;
       this.flushQueue();
+      this.onConnected?.();
     };
     this.ws.onclose = () => {
       this.connecting = false;
@@ -121,4 +124,3 @@ export class WsClient {
     }
   }
 }
-

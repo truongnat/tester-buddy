@@ -17,7 +17,6 @@
   --success:       #1F9D55;
   --warning:       #C27C0E;
 
-  /* shadcn expected tokens (mapped to our palette) */
   --background-shadcn:  var(--surface);
   --foreground:         var(--text);
   --muted:              var(--surface-muted);
@@ -38,6 +37,15 @@
 /* ── Base reset ──────────────────────────────────────────────────── */
 @layer base {
   * { box-sizing: border-box; border-color: #D9E1E4; }
+  *::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+  * {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
   body {
     background-color: #F5F7F8;
     color: #182024;
@@ -46,7 +54,6 @@
     -webkit-font-smoothing: antialiased;
     user-select: none;
   }
-  /* Allow text selection in content areas */
   p, span, td, input, textarea { user-select: text; }
 }
 
@@ -60,8 +67,8 @@
     display: none;
   }
   .no-scrollbar {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 }
 
@@ -70,6 +77,5 @@
   50%       { opacity: 0.3; }
 }
 
-/* ── Electron drag region ────────────────────────────────────────── */
 .titlebar { -webkit-app-region: drag; }
 .titlebar button, .titlebar a { -webkit-app-region: no-drag; }

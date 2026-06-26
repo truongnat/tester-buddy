@@ -9,6 +9,8 @@ export const EVENT_CONSOLE_LOG = "console.log";
 export const EVENT_NETWORK_REQUEST = "network.request";
 export const EVENT_NETWORK_RESPONSE = "network.response";
 export const EVENT_SCREENSHOT_CAPTURED = "screenshot.captured";
+export const EVENT_DOM_SNAPSHOT = "dom.snapshot";
+export const EVENT_DOM_HIGHLIGHTED = "dom.highlighted";
 
 export const COMMAND_CAPTURE_VISIBLE_TAB = "capture.visibleTab";
 export const COMMAND_HIGHLIGHT_ELEMENT = "highlight.element";
@@ -29,6 +31,8 @@ export const ALL_EVENT_TYPES = [
   EVENT_NETWORK_REQUEST,
   EVENT_NETWORK_RESPONSE,
   EVENT_SCREENSHOT_CAPTURED,
+  EVENT_DOM_SNAPSHOT,
+  EVENT_DOM_HIGHLIGHTED,
 ] as const;
 
 export const ALL_COMMAND_TYPES = [

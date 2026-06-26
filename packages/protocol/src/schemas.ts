@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   EVENT_TAB_CONNECTED, EVENT_TAB_UPDATED, EVENT_TAB_SWITCHED, EVENT_TAB_CLOSED,
   EVENT_USER_CLICK, EVENT_USER_INPUT, EVENT_NAVIGATION, EVENT_CONSOLE_LOG,
-  EVENT_NETWORK_REQUEST, EVENT_NETWORK_RESPONSE, EVENT_SCREENSHOT_CAPTURED,
+  EVENT_NETWORK_REQUEST, EVENT_NETWORK_RESPONSE, EVENT_SCREENSHOT_CAPTURED, EVENT_DOM_SNAPSHOT, EVENT_DOM_HIGHLIGHTED,
   COMMAND_CAPTURE_VISIBLE_TAB, COMMAND_HIGHLIGHT_ELEMENT, COMMAND_CLICK,
   COMMAND_TYPE, COMMAND_READ_DOM, COMMAND_GET_PAGE_CONTEXT,
 } from "./constants";
@@ -22,6 +22,23 @@ export const BrowserEventSchema = z.discriminatedUnion("type", [
   base.extend({ type: z.literal(EVENT_NETWORK_REQUEST), requestId: z.string(), method: z.string(), url: z.string(), requestHeaders: z.array(HttpHeaderSchema).optional(), requestBody: z.string().optional(), queryParams: z.record(z.string()).optional(), mimeType: z.string().optional() }),
   base.extend({ type: z.literal(EVENT_NETWORK_RESPONSE), requestId: z.string(), status: z.number(), statusText: z.string().optional(), durationMs: z.number(), responseHeaders: z.array(HttpHeaderSchema).optional(), responseBody: z.string().optional(), contentType: z.string().optional(), size: z.number().optional(), errorType: z.enum(["timeout", "abort", "cors", "network-error"]).optional() }),
   base.extend({ type: z.literal(EVENT_SCREENSHOT_CAPTURED), fileId: z.string(), dataUrl: z.string().optional() }),
+  base.extend({ type: z.literal(EVENT_DOM_HIGHLIGHTED), selector: z.string(), ok: z.boolean().default(true) }),
+  base.extend({
+    type: z.literal(EVENT_DOM_SNAPSHOT),
+    selector: z.string().optional(),
+    url: z.string(),
+    title: z.string(),
+    nodes: z.array(z.object({
+      depth: z.number(),
+      selector: z.string(),
+      tagName: z.string(),
+      text: z.string().optional(),
+      attributes: z.record(z.string()).optional(),
+      childCount: z.number().optional(),
+      interactive: z.boolean().optional(),
+      truncated: z.boolean().optional(),
+    })),
+  }),
 ]);
 
 export const BrowserCommandSchema = z.discriminatedUnion("type", [

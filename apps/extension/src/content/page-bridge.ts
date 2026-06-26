@@ -8,9 +8,14 @@ export function redactValue(el: HTMLInputElement): string {
 export class PageBridge {
   send(event: BrowserEvent) {
     try {
-      chrome.runtime.sendMessage({ source: "testerbuddy:event", event });
-    } catch {
-      // Extension reloaded — context invalidated, ignore until tab refreshes
+      chrome.runtime.sendMessage({ source: "testerbuddy:event", event }, () => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          console.warn("[TesterBuddy] Failed to send content event", event.type, error.message);
+        }
+      });
+    } catch (error) {
+      console.warn("[TesterBuddy] Content bridge unavailable", event.type, error);
     }
   }
 }

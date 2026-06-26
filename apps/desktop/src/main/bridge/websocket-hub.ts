@@ -33,7 +33,7 @@ export class WebSocketHub {
         if (result.success) {
           this.registry.handleMessage(sessionId, result.data);
         } else {
-          console.log("[hub] ignoring non-BrowserEvent:", msg);
+          console.log("[hub] ignoring non-BrowserEvent:", msg, result.error?.message);
         }
       } catch {
         // ignore malformed JSON
@@ -54,3 +54,4 @@ export class WebSocketHub {
     }
   }
 }
+
