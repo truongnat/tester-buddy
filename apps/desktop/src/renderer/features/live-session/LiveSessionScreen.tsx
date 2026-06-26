@@ -1,9 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Camera, Square, Play, MousePointer, Navigation, AlertCircle, Globe, Terminal, CheckSquare, Layers, Search, ArrowUpDown, ChevronRight, Copy, Check, Video } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../lib/cn";
+import {
+  EVENT_TAB_CONNECTED, EVENT_TAB_UPDATED, EVENT_TAB_SWITCHED, EVENT_TAB_CLOSED,
+  EVENT_USER_CLICK, EVENT_USER_INPUT, EVENT_NAVIGATION, EVENT_CONSOLE_LOG,
+  EVENT_NETWORK_REQUEST, EVENT_NETWORK_RESPONSE, EVENT_SCREENSHOT_CAPTURED,
+} from "@testerbuddy/protocol";
 import type { BrowserEvent } from "@testerbuddy/protocol";
 import React from "react";
 
@@ -12,22 +17,22 @@ type TimelineEntry = { ts: number; event: BrowserEvent };
 const FALLBACK_META = { icon: Terminal, borderClass: "border-l-gray-300", textClass: "text-text-muted", label: "Unknown" };
 
 const EVENT_META: Record<string, { icon: any; borderClass: string; textClass: string; label: string }> = {
-  "user.click":          { icon: MousePointer, borderClass: "border-l-primary",     textClass: "text-primary",     label: "Click" },
-  "user.input":          { icon: Terminal,     borderClass: "border-l-text-muted",  textClass: "text-text-muted",  label: "Input" },
-  "navigation":          { icon: Navigation,   borderClass: "border-l-indigo-500",  textClass: "text-indigo-500",  label: "Navigate" },
-  "console.log":         { icon: AlertCircle,  borderClass: "border-l-amber-500",   textClass: "text-amber-500",   label: "Console" },
-  "network.request":     { icon: Globe,        borderClass: "border-l-gray-300",    textClass: "text-text-muted",  label: "Request" },
-  "network.response":    { icon: Globe,        borderClass: "border-l-gray-300",    textClass: "text-text-muted",  label: "Response" },
-  "screenshot.captured": { icon: Camera,       borderClass: "border-l-success",     textClass: "text-success",     label: "Screenshot" },
-  "tab.connected":       { icon: Layers,       borderClass: "border-l-primary",     textClass: "text-primary",     label: "Tab" },
-  "tab.updated":         { icon: Layers,       borderClass: "border-l-primary",     textClass: "text-primary",     label: "Tab" },
-  "tab.switched":        { icon: Layers,       borderClass: "border-l-gray-400",    textClass: "text-gray-400",    label: "Tab Switch" },
-  "tab.closed":          { icon: Layers,       borderClass: "border-l-gray-400",    textClass: "text-gray-400",    label: "Tab Close" },
+  [EVENT_USER_CLICK]:          { icon: MousePointer, borderClass: "border-l-primary",     textClass: "text-primary",     label: "Click" },
+  [EVENT_USER_INPUT]:          { icon: Terminal,     borderClass: "border-l-text-muted",  textClass: "text-text-muted",  label: "Input" },
+  [EVENT_NAVIGATION]:          { icon: Navigation,   borderClass: "border-l-indigo-500",  textClass: "text-indigo-500",  label: "Navigate" },
+  [EVENT_CONSOLE_LOG]:         { icon: AlertCircle,  borderClass: "border-l-amber-500",   textClass: "text-amber-500",   label: "Console" },
+  [EVENT_NETWORK_REQUEST]:     { icon: Globe,        borderClass: "border-l-gray-300",    textClass: "text-text-muted",  label: "Request" },
+  [EVENT_NETWORK_RESPONSE]:    { icon: Globe,        borderClass: "border-l-gray-300",    textClass: "text-text-muted",  label: "Response" },
+  [EVENT_SCREENSHOT_CAPTURED]: { icon: Camera,       borderClass: "border-l-success",     textClass: "text-success",     label: "Screenshot" },
+  [EVENT_TAB_CONNECTED]:       { icon: Layers,       borderClass: "border-l-primary",     textClass: "text-primary",     label: "Tab" },
+  [EVENT_TAB_UPDATED]:         { icon: Layers,       borderClass: "border-l-primary",     textClass: "text-primary",     label: "Tab" },
+  [EVENT_TAB_SWITCHED]:        { icon: Layers,       borderClass: "border-l-gray-400",    textClass: "text-gray-400",    label: "Tab Switch" },
+  [EVENT_TAB_CLOSED]:          { icon: Layers,       borderClass: "border-l-gray-400",    textClass: "text-gray-400",    label: "Tab Close" },
 };
 
 type FilterType = "all" | "errors" | "actions" | "network" | "navigation";
 
-function EventRow({
+const EventRow = React.memo(function EventRow({
   entry,
   selected,
   checked,
@@ -43,7 +48,7 @@ function EventRow({
   const meta = EVENT_META[entry.event.type] ?? FALLBACK_META;
   const Icon = meta.icon;
   const time = new Date(entry.ts).toLocaleTimeString("en-GB", { hour12: false });
-  const isError = (entry.event.type === "console.log" && entry.event.level === "error") || (entry.event.type === "network.response" && entry.event.status >= 400);
+  const isError = (entry.event.type === EVENT_CONSOLE_LOG && entry.event.level === "error") || (entry.event.type === EVENT_NETWORK_RESPONSE && entry.event.status >= 400);
 
   return (
     <div
@@ -73,7 +78,7 @@ function EventRow({
             <span className="text-3xs font-mono text-text-muted">{time}</span>
           </div>
           <div className="flex items-center gap-1">
-            {entry.event.type === "network.response" && (
+            {entry.event.type === EVENT_NETWORK_RESPONSE && (
               <span className={cn("text-3xs font-bold font-mono px-1 py-0.5 rounded bg-bg", entry.event.status >= 400 ? "text-error" : "text-success")}>
                 {entry.event.status}
               </span>
@@ -87,7 +92,7 @@ function EventRow({
       </div>
     </div>
   );
-}
+});
 
 function getSafePathname(urlStr: string): string {
   try {
@@ -107,29 +112,29 @@ function getSafeHostname(urlStr: string): string {
 
 function getEventSummary(e: BrowserEvent): string {
   switch (e.type) {
-    case "user.click":
+    case EVENT_USER_CLICK:
       const cleanSelector = e.selector.split(">").pop()?.trim() || e.selector;
       return `Click ${e.text ? `"${e.text}"` : cleanSelector}`;
-    case "user.input":
+    case EVENT_USER_INPUT:
       const inputSelector = e.selector.split(">").pop()?.trim() || e.selector;
       return `Type "${e.valuePreview}" on ${inputSelector}`;
-    case "navigation":
+    case EVENT_NAVIGATION:
       return `Navigated to ${getSafePathname(e.to)}`;
-    case "console.log":
+    case EVENT_CONSOLE_LOG:
       return e.level === "error" ? e.message : `[${e.level}] ${e.message}`;
-    case "network.request":
+    case EVENT_NETWORK_REQUEST:
       return `${e.method} ${getSafePathname(e.url)}`;
-    case "network.response":
+    case EVENT_NETWORK_RESPONSE:
       return `${e.status} — ${e.durationMs}ms`;
-    case "tab.connected":
+    case EVENT_TAB_CONNECTED:
       return `Connected: ${getSafeHostname(e.url)}`;
-    case "tab.updated":
+    case EVENT_TAB_UPDATED:
       return `Tab updated: ${getSafeHostname(e.url)}`;
-    case "tab.switched":
-      return `Switched to tab #${e.tabId}`;
-    case "tab.closed":
+    case EVENT_TAB_SWITCHED:
+      return e.title ? `Switched to "${e.title}" (#${e.tabId})` : `Switched to tab #${e.tabId}`;
+    case EVENT_TAB_CLOSED:
       return `Tab closed #${e.tabId}`;
-    case "screenshot.captured":
+    case EVENT_SCREENSHOT_CAPTURED:
       return `Screenshot Captured`;
     default:
       return `Event: ${(e as any).type}`;
@@ -156,6 +161,7 @@ export function LiveSessionScreen() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordMetaRef = useRef({ projectId: "", ticketId: "" });
+  const activeTabIdRef = useRef("");
 
 
   const startVideoRecording = async (projId: string, tickId: string) => {
@@ -191,7 +197,7 @@ export function LiveSessionScreen() {
         try {
           const result = await window.testerbuddy?.saveVideo(
             new Uint8Array(buffer),
-            { tabId: "", projectId: meta.projectId, ticketId: meta.ticketId }
+            { tabId: activeTabIdRef.current, projectId: meta.projectId, ticketId: meta.ticketId }
           );
           if (result) {
             setConversionResultPath(result);
@@ -234,25 +240,34 @@ export function LiveSessionScreen() {
 
   const recordingRef = useRef(recording);
   recordingRef.current = recording;
+  const [liveTabInfo, setLiveTabInfo] = useState<{ title: string; time: string } | null>(null);
 
-  // Load historical events of the active session on mount
   useEffect(() => {
-    window.testerbuddy?.getSessions().then((sessions) => {
+    type SessionData = { id: string; connectedAt: string };
+    window.testerbuddy?.getSessions().then((raw) => {
+      const sessions = raw as SessionData[];
       if (sessions && sessions.length > 0) {
-        // Sort sessions by connection time (most recent first)
-        sessions.sort((a: any, b: any) => new Date(b.connectedAt).getTime() - new Date(a.connectedAt).getTime());
+        sessions.sort((a, b) => new Date(b.connectedAt).getTime() - new Date(a.connectedAt).getTime());
         const activeSession = sessions[0];
         window.testerbuddy?.getEvents(activeSession.id).then((historicalEvents) => {
           if (historicalEvents) {
-            setEvents(historicalEvents);
+            setEvents(historicalEvents as TimelineEntry[]);
           }
         });
       }
     });
 
     const unsubscribe = window.testerbuddy?.onEvent((payload: unknown) => {
-      if (!recordingRef.current) return;
       const { event, ts } = payload as { event: BrowserEvent; ts: number };
+      if (event.type === EVENT_TAB_CONNECTED || event.type === EVENT_TAB_SWITCHED || event.type === EVENT_TAB_UPDATED) {
+        activeTabIdRef.current = String(event.tabId);
+        const e = event as Record<string, unknown>;
+        const label = (typeof e.title === "string" && e.title.length > 0) ? e.title
+          : (typeof e.url === "string" && e.url.length > 0) ? getSafeHostname(e.url)
+          : `Tab #${e.tabId}`;
+        setLiveTabInfo({ title: label, time: new Date(ts).toLocaleTimeString("en-GB", { hour12: false }) });
+      }
+      if (!recordingRef.current) return;
       setEvents((prev) => [...prev, { ts, event }]);
     });
 
@@ -279,19 +294,18 @@ export function LiveSessionScreen() {
 
   const clearSelection = () => setCheckedKeys(new Set());
 
-  // Filter events
-  const filteredEvents = events.filter((e) => {
+  const filteredEvents = useMemo(() => events.filter((e) => {
     if (activeFilter !== "all") {
       if (activeFilter === "errors") {
-        const isErr = (e.event.type === "console.log" && e.event.level === "error")
-          || (e.event.type === "network.response" && e.event.status >= 400);
+        const isErr = (e.event.type === EVENT_CONSOLE_LOG && e.event.level === "error")
+          || (e.event.type === EVENT_NETWORK_RESPONSE && e.event.status >= 400);
         if (!isErr) return false;
       } else if (activeFilter === "actions") {
-        if (e.event.type !== "user.click" && e.event.type !== "user.input") return false;
+        if (e.event.type !== EVENT_USER_CLICK && e.event.type !== EVENT_USER_INPUT) return false;
       } else if (activeFilter === "network") {
-        if (e.event.type !== "network.request" && e.event.type !== "network.response") return false;
+        if (e.event.type !== EVENT_NETWORK_REQUEST && e.event.type !== EVENT_NETWORK_RESPONSE) return false;
       } else if (activeFilter === "navigation") {
-        if (e.event.type !== "navigation" && e.event.type !== "tab.connected" && e.event.type !== "tab.updated" && e.event.type !== "tab.switched" && e.event.type !== "tab.closed") return false;
+        if (e.event.type !== EVENT_NAVIGATION && e.event.type !== EVENT_TAB_CONNECTED && e.event.type !== EVENT_TAB_UPDATED && e.event.type !== EVENT_TAB_SWITCHED && e.event.type !== EVENT_TAB_CLOSED) return false;
       }
     }
 
@@ -303,18 +317,26 @@ export function LiveSessionScreen() {
     }
 
     return true;
-  });
+  }), [events, activeFilter, searchQuery]);
 
-  // Sort events
-  const sortedEvents = [...filteredEvents].sort((a, b) => {
+  const sortedEvents = useMemo(() => [...filteredEvents].sort((a, b) => {
     return sortNewestFirst ? b.ts - a.ts : a.ts - b.ts;
-  });
+  }), [filteredEvents, sortNewestFirst]);
 
-  // Get active tab title/url for header display
-  const activeTabEvent = [...events]
-    .reverse()
-    .find((e) => e.event.type === "tab.connected" || e.event.type === "tab.updated");
-  const activeTabTitle = activeTabEvent ? (activeTabEvent.event as any).title : null;
+  const activeTabInfo = useMemo(() => {
+    for (const ev of [...events].reverse()) {
+      if (ev.event.type !== EVENT_TAB_CONNECTED && ev.event.type !== EVENT_TAB_UPDATED && ev.event.type !== EVENT_TAB_SWITCHED)
+        continue;
+      const e = ev.event as Record<string, unknown>;
+      const label = (typeof e.title === "string" && e.title.length > 0) ? e.title
+        : (typeof e.url === "string" && e.url.length > 0) ? getSafeHostname(e.url)
+        : `Tab #${e.tabId}`;
+      return { title: label, time: new Date(ev.ts).toLocaleTimeString("en-GB", { hour12: false }) };
+    }
+    return null;
+  }, [events]);
+
+  const targetInfo = liveTabInfo ?? activeTabInfo;
 
   return (
     <div className="flex flex-col h-full bg-[#F8FAFC]">
@@ -322,9 +344,10 @@ export function LiveSessionScreen() {
       <header className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-border/80 bg-surface shadow-sm z-10">
         <div className="flex items-center gap-3">
           <h1 className="font-semibold text-base text-text tracking-tight">Live Session</h1>
-          {activeTabTitle && (
+          {targetInfo && (
             <span className="text-xs text-text-muted font-medium border-l border-border/60 pl-3">
-              Target: <span className="text-text font-semibold">{activeTabTitle}</span>
+              Target: <span className="text-text font-semibold truncate max-w-[200px] inline-block align-bottom" title={targetInfo.title}>{targetInfo.title}</span>
+              <span className="ml-2 text-text-muted/70">{targetInfo.time}</span>
             </span>
           )}
           {recording ? (
@@ -490,7 +513,7 @@ export function LiveSessionScreen() {
                     .sort((a, b) => a.ts - b.ts);
                   const steps = selectedList.map((e) => getEventSummary(e.event));
                   const screenshots = selectedList
-                    .filter((e) => e.event.type === "screenshot.captured" && (e.event as any).dataUrl)
+                    .filter((e) => e.event.type === EVENT_SCREENSHOT_CAPTURED && (e.event as any).dataUrl)
                     .map((e) => (e.event as any).dataUrl);
 
                   sessionStorage.setItem("testerbuddy:temp_steps", JSON.stringify(steps));
@@ -684,7 +707,7 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
   const renderFriendlyDetails = () => {
     const e = entry.event;
     switch (e.type) {
-      case "user.click":
+      case EVENT_USER_CLICK:
         return (
           <div className="divide-y divide-border/30">
             {renderProperty("Element Text", e.text ? <span className="font-semibold">"{e.text}"</span> : <span className="italic text-text-muted">None</span>)}
@@ -692,14 +715,14 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
             {renderProperty("Selector", <code className="text-2xs font-mono text-primary bg-primary/5 px-1.5 py-0.5 rounded break-all">{e.selector}</code>)}
           </div>
         );
-      case "user.input":
+      case EVENT_USER_INPUT:
         return (
           <div className="divide-y divide-border/30">
             {renderProperty("Input Value", <span className="font-mono text-2xs bg-primary/5 text-primary border border-primary/20 px-2 py-0.5 rounded font-semibold break-all">{e.valuePreview}</span>)}
             {renderProperty("Selector", <code className="text-2xs font-mono text-text bg-bg px-1.5 py-0.5 rounded break-all">{e.selector}</code>)}
           </div>
         );
-      case "navigation":
+      case EVENT_NAVIGATION:
         return (
           <div className="divide-y divide-border/30">
             {renderProperty("Navigation Type", e.navigationType ? <Badge variant="primary" className="text-3xs uppercase font-bold">{e.navigationType}</Badge> : <span className="italic text-text-muted">Unknown</span>)}
@@ -709,7 +732,7 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
             {e.referrer && renderProperty("Referrer", <span className="font-mono text-2xs text-text-muted break-all">{e.referrer}</span>)}
           </div>
         );
-      case "console.log": {
+      case EVENT_CONSOLE_LOG: {
         const levelColors: Record<string, string> = {
           error: "text-error border-error/30 bg-error/5",
           warn: "text-amber-600 border-amber-300 bg-amber-50",
@@ -731,7 +754,7 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
           </div>
         );
       }
-      case "network.request": {
+      case EVENT_NETWORK_REQUEST: {
         return (
           <div className="divide-y divide-border/30">
             <div className="flex items-center justify-between py-2.5 border-b border-border/40">
@@ -764,7 +787,7 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
           </div>
         );
       }
-      case "network.response": {
+      case EVENT_NETWORK_RESPONSE: {
         const isErr = e.status >= 400;
         return (
           <div className="divide-y divide-border/30">
@@ -778,23 +801,25 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
           </div>
         );
       }
-      case "tab.connected":
-      case "tab.updated":
+      case EVENT_TAB_CONNECTED:
+      case EVENT_TAB_UPDATED:
         return (
           <div className="divide-y divide-border/30">
             {renderProperty("Tab Title", <span className="font-semibold text-text">{e.title}</span>)}
             {renderProperty("URL", <span className="font-mono text-2xs text-primary break-all">{e.url}</span>)}
-            {e.type === "tab.updated" && renderProperty("Tab ID", <span className="font-mono text-2xs text-text-muted">{String(e.tabId)}</span>)}
+            {e.type === EVENT_TAB_UPDATED && renderProperty("Tab ID", <span className="font-mono text-2xs text-text-muted">{String(e.tabId)}</span>)}
           </div>
         );
-      case "tab.switched":
+      case EVENT_TAB_SWITCHED:
         return (
           <div className="divide-y divide-border/30">
+            {e.title && renderProperty("Tab Title", <span className="font-semibold text-text">{e.title}</span>)}
+            {e.url && renderProperty("URL", <span className="font-mono text-2xs text-primary break-all">{e.url}</span>)}
             {renderProperty("Tab ID", <span className="font-mono text-2xs font-semibold">{String(e.tabId)}</span>)}
             {e.previousTabId !== undefined && renderProperty("Previous Tab ID", <span className="font-mono text-2xs text-text-muted">{String(e.previousTabId)}</span>)}
           </div>
         );
-      case "tab.closed":
+      case EVENT_TAB_CLOSED:
         return (
           <div className="divide-y divide-border/30">
             {renderProperty("Tab ID", <span className="font-mono text-2xs font-semibold">{String(e.tabId)}</span>)}
@@ -810,7 +835,7 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
       {/* Top Inspector Header */}
       <div className="flex items-center justify-between border-b border-border/50 pb-3 shrink-0">
         <div className="flex items-center gap-2">
-          <Badge variant={(entry.event.type === "console.log" && entry.event.level === "error") ? "error" : "primary"} className="px-2.5 py-0.5 rounded-md font-semibold text-2xs uppercase tracking-wider">
+          <Badge variant={(entry.event.type === EVENT_CONSOLE_LOG && entry.event.level === "error") ? "error" : "primary"} className="px-2.5 py-0.5 rounded-md font-semibold text-2xs uppercase tracking-wider">
             {meta.label}
           </Badge>
           <span className="text-xs text-text-muted font-mono font-medium">
@@ -820,7 +845,7 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
 
         <div className="flex items-center gap-2">
           {/* Tab Toggle */}
-          {entry.event.type !== "screenshot.captured" && (
+          {entry.event.type !== EVENT_SCREENSHOT_CAPTURED && (
             <div className="flex items-center gap-1 bg-bg border border-border/60 rounded-lg p-0.5">
               <button
                 onClick={() => setActiveTab("friendly")}
@@ -864,7 +889,7 @@ function EventDetail({ entry }: { entry: TimelineEntry }) {
 
       {/* Detail Content */}
       <div className="flex-1 overflow-y-auto no-scrollbar pt-4 min-h-0">
-        {entry.event.type === "screenshot.captured" && dataUrl ? (
+        {entry.event.type === EVENT_SCREENSHOT_CAPTURED && dataUrl ? (
           <div className="space-y-3">
             <h3 className="text-xs font-semibold text-text">Screenshot Capture (Click to enlarge)</h3>
             <div 

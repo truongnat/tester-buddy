@@ -1,16 +1,26 @@
-import { app, BrowserWindow, desktopCapturer, dialog } from "electron";
+import { app, BrowserWindow } from "electron";
 import { join } from "path";
-import { existsSync, writeFileSync, mkdirSync, appendFileSync } from "fs";
+import { existsSync, writeFileSync, mkdirSync, appendFileSync, statSync, renameSync } from "fs";
+import {
+  EVENT_TAB_CONNECTED, EVENT_TAB_UPDATED, EVENT_SCREENSHOT_CAPTURED,
+} from "@testerbuddy/protocol";
 import type { BrowserEvent } from "@testerbuddy/protocol";
-import type { IncomingEvent } from "./bridge/extension-session-registry";
+import { IPC } from "./ipc/channels";
 import { LocalServer, VideoUpload } from "./bridge/local-server";
 import { registerIpcHandlers } from "./ipc/handlers";
 import { DatabaseManager } from "./db/database";
 import { convertToMp4 } from "./ffmpeg-converter";
+import { pickScreen } from "./screen-picker";
 
-// Redirect console logs to a file in userData
+// Redirect console logs to a file in userData with simple rotation
 try {
   const logFilePath = join(app.getPath("userData"), "main.log");
+  const MAX_LOG_SIZE = 1024 * 1024;
+  try {
+    if (existsSync(logFilePath) && statSync(logFilePath).size > MAX_LOG_SIZE) {
+      renameSync(logFilePath, logFilePath + ".old");
+    }
+  } catch { /* ignore rotation failures */ }
   writeFileSync(logFilePath, `--- APP START ---\n`);
   
   const logRedirect = (type: string, ...args: any[]) => {
@@ -33,11 +43,11 @@ async function bootstrap() {
   server.onVideoUpload(async (upload: VideoUpload) => {
     const finalPath = await convertToMp4(upload.webmPath, upload.mp4Path, 0, (progress) => {
       if (win && !win.isDestroyed()) {
-        win.webContents.send("session:video-progress", { progress });
+        win.webContents.send(IPC.SESSION_VIDEO_PROGRESS, { progress });
       }
     });
     if (win && !win.isDestroyed()) {
-      win.webContents.send("session:video-saved", { filepath: finalPath });
+      win.webContents.send(IPC.SESSION_VIDEO_SAVED, { filepath: finalPath });
     }
   });
   await server.start();
@@ -56,24 +66,9 @@ async function bootstrap() {
 
   win.webContents.session.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
-      const sources = await desktopCapturer.getSources({ types: ["screen"] });
-
-      if (sources.length === 1) {
-        callback({ video: sources[0] });
-        return;
-      }
-
-      const buttons = sources.map((s: Electron.DesktopCapturerSource) => `${s.name}`);
-      const { response } = await dialog.showMessageBox(win, {
-        type: "question",
-        buttons,
-        defaultId: 0,
-        title: "Select Screen to Record",
-        message: "Which screen would you like to capture?"
-      });
-
-      if (response >= 0) {
-        callback({ video: sources[response] });
+      const source = await pickScreen();
+      if (source) {
+        callback({ video: source });
       }
     } catch (err) {
       console.error("[displayMedia] Failed to get sources:", err);
@@ -84,45 +79,43 @@ async function bootstrap() {
     db.insertSession(session.id, session.activeTabId, session.activeUrl);
   });
 
-  server.hub.registry.onEvent((sessionId, event: IncomingEvent) => {
-    if (event.type === "offscreen:log") {
-      console.log((event as unknown as { text: string }).text);
-      return;
-    }
-
-    if (event.type === "offscreen:error") {
-      console.error((event as unknown as { text: string }).text);
-      return;
-    }
-
+  server.hub.registry.onEvent((sessionId, event: BrowserEvent) => {
     const ts = Date.now();
-    const be = event as BrowserEvent;
-    const eventId = db.insertEvent(sessionId, be, ts);
 
-    if (be.type === "tab.connected" || be.type === "tab.updated") {
-      db.updateSessionTab(sessionId, be.tabId, be.url);
+    if (event.type === EVENT_TAB_CONNECTED || event.type === EVENT_TAB_UPDATED) {
+      db.updateSessionTab(sessionId, event.tabId, event.url);
     }
 
-    if (be.type === "screenshot.captured") {
-      const { fileId, dataUrl } = be;
+    if (event.type === EVENT_SCREENSHOT_CAPTURED) {
+      const { fileId, dataUrl } = event;
       if (dataUrl) {
         try {
-          const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
-          const screenshotsDir = join(app.getPath("userData"), "screenshots");
-          if (!existsSync(screenshotsDir)) {
-            mkdirSync(screenshotsDir, { recursive: true });
+          const mimeMatch = dataUrl.match(/^data:(image\/\w+);base64,/);
+          if (!mimeMatch) {
+            console.error("Failed to parse screenshot dataUrl");
+          } else {
+            const ext = mimeMatch[1].split("/")[1];
+            const base64Data = dataUrl.slice(dataUrl.indexOf(",") + 1);
+            const screenshotsDir = join(app.getPath("userData"), "screenshots");
+            if (!existsSync(screenshotsDir)) {
+              mkdirSync(screenshotsDir, { recursive: true });
+            }
+            const filepath = join(screenshotsDir, `${fileId}.${ext}`);
+            writeFileSync(filepath, base64Data, "base64");
+            const dbEvent = { ...event, dataUrl: undefined };
+            const eventId = db.insertEvent(sessionId, dbEvent, ts);
+            db.insertScreenshot(fileId, eventId, filepath, ts);
           }
-          const filepath = join(screenshotsDir, `${fileId}.png`);
-          writeFileSync(filepath, base64Data, "base64");
-          db.insertScreenshot(fileId, eventId, filepath, ts);
         } catch (err) {
           console.error("Failed to save screenshot:", err);
         }
       }
+    } else {
+      db.insertEvent(sessionId, event, ts);
     }
 
     if (!win.isDestroyed()) {
-      win.webContents.send("session:event", { event: be, ts });
+      win.webContents.send(IPC.SESSION_EVENT, { event, ts });
     }
   });
 
@@ -131,6 +124,8 @@ async function bootstrap() {
   } else {
     win.loadFile(join(__dirname, "../renderer/index.html"));
   }
+
+  app.on("before-quit", () => db.close());
 }
 
 app.whenReady().then(bootstrap);

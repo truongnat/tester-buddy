@@ -1,5 +1,6 @@
 import { Server as HttpServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import { safeParseBrowserEvent } from "@testerbuddy/protocol";
 import type { PairingService } from "./pairing.service";
 import { ExtensionSessionRegistry } from "./extension-session-registry";
 
@@ -28,11 +29,19 @@ export class WebSocketHub {
     ws.on("message", (data) => {
       try {
         const msg = JSON.parse(data.toString());
-        console.log("[hub] received message:", msg);
-        this.registry.handleMessage(sessionId, msg);
+        const result = safeParseBrowserEvent(msg);
+        if (result.success) {
+          this.registry.handleMessage(sessionId, result.data);
+        } else {
+          console.log("[hub] ignoring non-BrowserEvent:", msg);
+        }
       } catch {
-        // ignore malformed
+        // ignore malformed JSON
       }
+    });
+
+    ws.on("error", (err) => {
+      console.error(`[hub] WebSocket error for session ${sessionId}:`, err.message);
     });
 
     ws.on("close", () => this.registry.unregister(sessionId));

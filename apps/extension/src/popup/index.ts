@@ -1,5 +1,3 @@
-import { BRIDGE_WS_URL } from "@testerbuddy/protocol";
-
 const banner        = document.getElementById("banner")!;
 const bannerIcon    = document.getElementById("banner-icon")!;
 const bannerLabel   = document.getElementById("banner-label")!;
@@ -33,63 +31,66 @@ function setState(state: State) {
   connSection.style.display = hasToken ? "block" : "none";
 }
 
-function checkConnection(token: string) {
+async function queryStatus() {
   setState("checking");
-  const ws = new WebSocket(`${BRIDGE_WS_URL}?token=${token}`);
-  let resolved = false;
-
-  const timer = setTimeout(() => {
-    if (!resolved) { resolved = true; ws.close(); setState("disconnected"); }
-  }, 3000);
-
-  ws.onopen = () => {
-    if (resolved) return;
-    resolved = true;
-    clearTimeout(timer);
-    setState("connected");
-    ws.close();
-  };
-  ws.onclose = (e) => {
-    if (resolved) return; // already handled by onopen
-    clearTimeout(timer);
-    resolved = true;
-    if (e.code === 4001) setState("invalid-token");
-    else setState("disconnected");
-  };
-  ws.onerror = () => {
-    if (resolved) return;
-    clearTimeout(timer);
-    resolved = true;
+  try {
+    const response = await chrome.runtime.sendMessage({ source: "testerbuddy:get-status" });
+    if (!response || response.source !== "testerbuddy:status") {
+      setState("disconnected");
+      return;
+    }
+    const status = response.status as { state: string };
+    switch (status.state) {
+      case "connected":
+        setState("connected");
+        break;
+      case "no-token":
+        setState("no-token");
+        break;
+      default:
+        setState("disconnected");
+        break;
+    }
+  } catch {
     setState("disconnected");
-  };
+  }
 }
 
 chrome.storage.local.get("pairingToken").then(({ pairingToken }) => {
-  if (pairingToken) checkConnection(pairingToken);
+  if (pairingToken) queryStatus();
   else setState("no-token");
 });
 
-// Save token
-btnSave.addEventListener("click", () => {
+// Save token — triggers service worker's storage listener to connect
+btnSave.addEventListener("click", async () => {
   const token = tokenInput.value.trim();
   if (!token) { tokenInput.focus(); return; }
-  chrome.storage.local.set({ pairingToken: token }).then(() => {
+  btnSave.disabled = true;
+  try {
+    await chrome.storage.local.set({ pairingToken: token });
     tokenInput.value = "";
-    checkConnection(token);
-  });
+    // Give service worker time to pick up the token and connect
+    await new Promise((r) => setTimeout(r, 500));
+    await queryStatus();
+  } catch {
+    setState("disconnected");
+  } finally {
+    btnSave.disabled = false;
+  }
 });
 
 // Reset
-btnReset.addEventListener("click", () => {
-  chrome.storage.local.remove("pairingToken").then(() => setState("no-token"));
+btnReset.addEventListener("click", async () => {
+  await chrome.storage.local.remove("pairingToken");
+  setState("no-token");
 });
 
 // Recheck
-btnRecheck.addEventListener("click", () => {
-  chrome.storage.local.get("pairingToken").then(({ pairingToken }) => {
-    if (pairingToken) checkConnection(pairingToken);
-    else setState("no-token");
-  });
-});
+btnRecheck.addEventListener("click", queryStatus);
 
-tokenInput.addEventListener("keydown", (e) => { if (e.key === "Enter") btnSave.click(); });
+tokenInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    btnSave.click();
+  }
+});

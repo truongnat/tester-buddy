@@ -2,6 +2,8 @@ import { spawn } from "child_process";
 import { unlinkSync } from "fs";
 import { getFfmpegPath, log as logFfmpeg } from "./ffmpeg";
 
+const FFMPEG_TIMEOUT_MS = 10 * 60 * 1000;
+
 export function convertToMp4(
   webmPath: string,
   mp4Path: string,
@@ -12,6 +14,7 @@ export function convertToMp4(
     const ffmpegPath = getFfmpegPath();
     let totalDurationSec = estimatedDurationSec || 0;
     const startTime = Date.now();
+    let settled = false;
 
     console.log(`[ffmpeg] Starting conversion of ${webmPath} to ${mp4Path}...`);
     logFfmpeg(`Starting conversion of ${webmPath} to ${mp4Path} with estimated duration: ${estimatedDurationSec}`);
@@ -25,9 +28,20 @@ export function convertToMp4(
       mp4Path
     ], { stdio: ["ignore", "ignore", "pipe"] });
 
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        ffmpeg.kill("SIGKILL");
+        console.error(`[ffmpeg] Timed out after ${FFMPEG_TIMEOUT_MS}ms, killed process`);
+        logFfmpeg(`Timed out after ${FFMPEG_TIMEOUT_MS}ms, killed process`);
+        if (onProgress) onProgress(100);
+        resolve(webmPath);
+      }
+    }, FFMPEG_TIMEOUT_MS);
+
     ffmpeg.stderr.on("data", (data: Buffer) => {
       const output = data.toString();
-      process.stdout.write(`[ffmpeg] ${output}`);
+      console.log(`[ffmpeg] ${output.trim()}`);
       logFfmpeg(`[stderr] ${output.trim()}`);
 
       if (!totalDurationSec) {
@@ -61,6 +75,9 @@ export function convertToMp4(
     });
 
     ffmpeg.on("close", (code: number) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
       let finalPath = mp4Path;
 
@@ -79,6 +96,9 @@ export function convertToMp4(
     });
 
     ffmpeg.on("error", (spawnError: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
       console.error(`[ffmpeg] Failed to start conversion:`, spawnError);
       logFfmpeg(`Failed to start conversion error: ${spawnError?.message || spawnError}`);
       resolve(webmPath);

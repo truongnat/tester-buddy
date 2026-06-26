@@ -1,14 +1,24 @@
-import type { BrowserEvent, BrowserCommand } from "@testerbuddy/protocol";
-import { BRIDGE_WS_URL } from "@testerbuddy/protocol";
+import type { BrowserEvent } from "@testerbuddy/protocol";
+import { BRIDGE_WS_URL, safeParseBrowserCommand } from "@testerbuddy/protocol";
 import type { Router } from "./router";
 
-const RECONNECT_DELAY_MS = 3000;
+const INITIAL_RECONNECT_DELAY_MS = 1000;
+const MAX_RECONNECT_DELAY_MS = 30_000;
+
+export type WsStatus =
+  | { state: "no-token" }
+  | { state: "connecting"; token: string; attempt: number }
+  | { state: "connected"; token: string }
+  | { state: "disconnected"; token: string; attempt: number; delay: number };
 
 export class WsClient {
   private ws?: WebSocket;
   private token?: string;
   private router: Router;
   private queue: BrowserEvent[] = [];
+  private connecting = false;
+  private reconnectAttempts = 0;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
 
   constructor({ router }: { router: Router }) {
     this.router = router;
@@ -18,6 +28,7 @@ export class WsClient {
     chrome.storage.onChanged.addListener((changes) => {
       if (changes.pairingToken) {
         this.token = changes.pairingToken.newValue;
+        this.cancelReconnect();
         this.ws?.close();
         this.connect();
       }
@@ -30,27 +41,49 @@ export class WsClient {
     if (this.token) this.connect();
   }
 
+  private cancelReconnect() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
+    this.reconnectAttempts = 0;
+  }
+
   private connect() {
-    if (!this.token) return;
+    if (this.connecting || !this.token) return;
+    this.connecting = true;
 
     this.ws = new WebSocket(`${BRIDGE_WS_URL}?token=${this.token}`);
 
     this.ws.onopen = () => {
       console.log("[TesterBuddy] Connected to bridge");
+      this.connecting = false;
+      this.reconnectAttempts = 0;
       this.flushQueue();
     };
     this.ws.onclose = () => {
-      console.log("[TesterBuddy] Bridge disconnected, retrying...");
-      setTimeout(() => this.connect(), RECONNECT_DELAY_MS);
+      this.connecting = false;
+      const delay = Math.min(
+        INITIAL_RECONNECT_DELAY_MS * Math.pow(2, this.reconnectAttempts),
+        MAX_RECONNECT_DELAY_MS
+      );
+      this.reconnectAttempts++;
+      console.log(`[TesterBuddy] Bridge disconnected, retrying in ${delay}ms (attempt ${this.reconnectAttempts})...`);
+      this.reconnectTimer = setTimeout(() => this.connect(), delay);
     };
     this.ws.onerror = (e) => {
       console.error("[TesterBuddy] WebSocket error:", e);
     };
     this.ws.onmessage = (e) => {
       try {
-        const cmd: BrowserCommand = JSON.parse(e.data);
-        console.log("[ws] received command:", cmd.type);
-        this.router.handleCommand(cmd);
+        const parsed = JSON.parse(e.data);
+        const result = safeParseBrowserCommand(parsed);
+        if (result.success) {
+          console.log("[ws] received command:", result.data.type);
+          this.router.handleCommand(result.data);
+        } else {
+          console.warn("[ws] ignoring invalid command:", result.error);
+        }
       } catch (err) {
         console.error("[ws] failed to parse message:", err);
       }
@@ -66,6 +99,17 @@ export class WsClient {
         }
       }
     }
+  }
+
+  getStatus(): WsStatus {
+    if (!this.token) return { state: "no-token" };
+    if (this.ws?.readyState === WebSocket.OPEN) return { state: "connected", token: this.token };
+    if (this.connecting) return { state: "connecting", token: this.token, attempt: this.reconnectAttempts };
+    const delay = Math.min(
+      INITIAL_RECONNECT_DELAY_MS * Math.pow(2, this.reconnectAttempts),
+      MAX_RECONNECT_DELAY_MS
+    );
+    return { state: "disconnected", token: this.token, attempt: this.reconnectAttempts, delay };
   }
 
   send(event: BrowserEvent) {

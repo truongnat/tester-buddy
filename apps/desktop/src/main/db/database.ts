@@ -1,9 +1,12 @@
 import initSqlJs from "sql.js";
+import type { Database } from "sql.js";
 import { join } from "path";
 import { writeFileSync, readFileSync, existsSync } from "fs";
 import { app } from "electron";
 import { randomUUID } from "crypto";
 import type { BrowserEvent } from "@testerbuddy/protocol";
+
+const SCHEMA_VERSION = 2;
 
 export interface SessionRecord {
   id: string;
@@ -17,7 +20,7 @@ export interface EventRecord {
   sessionId: string;
   type: string;
   timestamp: number;
-  data: string; // JSON string
+  data: string;
 }
 
 export interface ScreenshotRecord {
@@ -27,9 +30,25 @@ export interface ScreenshotRecord {
   timestamp: number;
 }
 
+export interface BugReportRecord {
+  id: string;
+  title: string;
+  severity: "low" | "medium" | "high" | "critical";
+  description?: string;
+  stepsToReproduce: string;
+  expectedResult?: string;
+  actualResult?: string;
+  screenshots: string[];
+  video?: string;
+  createdAt: string;
+}
+
 export class DatabaseManager {
-  private db!: initSqlJs.Database;
+  private db!: Database;
   private dbPath: string;
+  private dirty = false;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private closed = false;
 
   constructor() {
     const userData = app.getPath("userData");
@@ -45,10 +64,28 @@ export class DatabaseManager {
       this.db = new SQL.Database();
     }
     this.createTables();
-    this.save();
+    this.migrate();
+    this.flush();
+  }
+
+  close() {
+    this.closed = true;
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    this.flush();
+    this.db.close();
   }
 
   private createTables() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS _meta (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+    `);
+
     this.db.run(`
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
@@ -93,16 +130,44 @@ export class DatabaseManager {
         createdAt TEXT NOT NULL
       );
     `);
+  }
 
-    // Safe migration for existing databases
-    try {
-      this.db.run("ALTER TABLE bug_reports ADD COLUMN video TEXT;");
-    } catch {
-      // Column already exists, ignore
+  private migrate() {
+    const row = this.db.exec("SELECT value FROM _meta WHERE key = 'schema_version'");
+    let version = 0;
+    if (row.length > 0 && row[0].values.length > 0) {
+      version = parseInt(row[0].values[0][0] as string, 10) || 0;
+    }
+
+    if (version < 2) {
+      const cols = this.db.exec("PRAGMA table_info(bug_reports)");
+      const hasVideo = cols.length > 0 && cols[0].values.some((c: unknown[]) => c[1] === "video");
+      if (!hasVideo) {
+        this.db.run("ALTER TABLE bug_reports ADD COLUMN video TEXT;");
+      }
+    }
+
+    this.db.run("INSERT OR REPLACE INTO _meta (key, value) VALUES (?, ?)", [
+      "schema_version",
+      String(SCHEMA_VERSION),
+    ]);
+    this.markDirty();
+  }
+
+  private markDirty() {
+    if (this.closed) return;
+    this.dirty = true;
+    if (this.saveTimer === null) {
+      this.saveTimer = setTimeout(() => {
+        this.saveTimer = null;
+        this.flush();
+      }, 500);
     }
   }
 
-  private save() {
+  private flush() {
+    if (!this.dirty) return;
+    this.dirty = false;
     const data = this.db.export();
     const buffer = Buffer.from(data);
     writeFileSync(this.dbPath, buffer);
@@ -114,7 +179,7 @@ export class DatabaseManager {
       "INSERT OR REPLACE INTO sessions (id, activeTabId, activeUrl, connectedAt) VALUES (?, ?, ?, ?)",
       [id, activeTabId ?? null, activeUrl ?? null, connectedAt]
     );
-    this.save();
+    this.markDirty();
   }
 
   updateSessionTab(id: string, activeTabId: number, activeUrl: string) {
@@ -122,7 +187,7 @@ export class DatabaseManager {
       "UPDATE sessions SET activeTabId = ?, activeUrl = ? WHERE id = ?",
       [activeTabId, activeUrl, id]
     );
-    this.save();
+    this.markDirty();
   }
 
   insertEvent(sessionId: string, event: BrowserEvent, timestamp: number): string {
@@ -131,7 +196,7 @@ export class DatabaseManager {
       "INSERT INTO events (id, sessionId, type, timestamp, data) VALUES (?, ?, ?, ?, ?)",
       [id, sessionId, event.type, timestamp, JSON.stringify(event)]
     );
-    this.save();
+    this.markDirty();
     return id;
   }
 
@@ -140,7 +205,7 @@ export class DatabaseManager {
       "INSERT OR REPLACE INTO screenshots (fileId, eventId, filepath, timestamp) VALUES (?, ?, ?, ?)",
       [fileId, eventId, filepath, timestamp]
     );
-    this.save();
+    this.markDirty();
   }
 
   getSessions(): SessionRecord[] {
@@ -194,7 +259,7 @@ export class DatabaseManager {
         createdAt,
       ]
     );
-    this.save();
+    this.markDirty();
   }
 
   getBugReports(): BugReportRecord[] {
@@ -205,7 +270,7 @@ export class DatabaseManager {
       result.push({
         id: row.id as string,
         title: row.title as string,
-        severity: row.severity as any,
+        severity: row.severity as "low" | "medium" | "high" | "critical",
         description: row.description ? (row.description as string) : undefined,
         stepsToReproduce: row.stepsToReproduce as string,
         expectedResult: row.expectedResult ? (row.expectedResult as string) : undefined,
@@ -221,19 +286,6 @@ export class DatabaseManager {
 
   deleteBugReport(id: string) {
     this.db.run("DELETE FROM bug_reports WHERE id = ?", [id]);
-    this.save();
+    this.markDirty();
   }
-}
-
-export interface BugReportRecord {
-  id: string;
-  title: string;
-  severity: "low" | "medium" | "high" | "critical";
-  description?: string;
-  stepsToReproduce: string;
-  expectedResult?: string;
-  actualResult?: string;
-  screenshots: string[];
-  video?: string;
-  createdAt: string;
 }

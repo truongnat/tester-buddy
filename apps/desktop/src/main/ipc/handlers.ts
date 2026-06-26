@@ -1,3 +1,4 @@
+import { COMMAND_CAPTURE_VISIBLE_TAB } from "@testerbuddy/protocol";
 import { ipcMain, BrowserWindow, app, dialog, shell } from "electron";
 import { writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
@@ -5,7 +6,7 @@ import { cleanName } from "@testerbuddy/shared";
 import { IPC } from "./channels";
 import type { WebSocketHub } from "../bridge/websocket-hub";
 import type { PairingService } from "../bridge/pairing.service";
-import type { DatabaseManager } from "../db/database";
+import type { DatabaseManager, BugReportRecord } from "../db/database";
 import { convertToMp4 } from "../ffmpeg-converter";
 
 export function registerIpcHandlers(
@@ -24,21 +25,26 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.GET_EVENTS, (_e, sessionId: string) => {
     const events = db.getEvents(sessionId);
-    return events.map((ev) => ({
-      ts: ev.timestamp,
-      event: JSON.parse(ev.data),
-    }));
+    return events.map((ev) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(ev.data);
+      } catch {
+        parsed = { raw: ev.data };
+      }
+      return { ts: ev.timestamp, event: parsed };
+    });
   });
 
   ipcMain.handle(IPC.CAPTURE_SCREENSHOT, () => {
     const sessions = hub.registry.getAllSessions();
     if (sessions.length > 0) {
       sessions.sort((a, b) => b.connectedAt.getTime() - a.connectedAt.getTime());
-      hub.send(sessions[0].id, { type: "capture.visibleTab" });
+      hub.send(sessions[0].id, { type: COMMAND_CAPTURE_VISIBLE_TAB });
     }
   });
 
-  ipcMain.handle(IPC.SAVE_BUG_REPORT, (_e, report: any) => {
+  ipcMain.handle(IPC.SAVE_BUG_REPORT, (_e, report: Omit<BugReportRecord, "createdAt">) => {
     return db.insertBugReport(report);
   });
 
@@ -69,7 +75,7 @@ export function registerIpcHandlers(
     return convertToMp4(webmPath, mp4Path);
   });
 
-  ipcMain.handle(IPC.EXPORT_BUG, async (_e, report: any) => {
+  ipcMain.handle(IPC.EXPORT_BUG, async (_e, report: BugReportRecord) => {
 
     const { filePath } = await dialog.showSaveDialog(win, {
       title: "Export Bug Report",
@@ -134,7 +140,7 @@ export function registerIpcHandlers(
 
   hub.registry.onConnectionChange((count: number) => {
     if (!win.isDestroyed()) {
-      win.webContents.send("bridge:connection-change", count);
+      win.webContents.send(IPC.BRIDGE_CONNECTION_CHANGE, count);
     }
   });
 }

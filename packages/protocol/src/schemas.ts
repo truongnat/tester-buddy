@@ -1,27 +1,34 @@
 import { z } from "zod";
+import {
+  EVENT_TAB_CONNECTED, EVENT_TAB_UPDATED, EVENT_TAB_SWITCHED, EVENT_TAB_CLOSED,
+  EVENT_USER_CLICK, EVENT_USER_INPUT, EVENT_NAVIGATION, EVENT_CONSOLE_LOG,
+  EVENT_NETWORK_REQUEST, EVENT_NETWORK_RESPONSE, EVENT_SCREENSHOT_CAPTURED,
+  COMMAND_CAPTURE_VISIBLE_TAB, COMMAND_HIGHLIGHT_ELEMENT, COMMAND_CLICK,
+  COMMAND_TYPE, COMMAND_READ_DOM, COMMAND_GET_PAGE_CONTEXT,
+} from "./constants";
 
 const base = z.object({ type: z.string() });
 export const HttpHeaderSchema = z.object({ name: z.string(), value: z.string() });
 
 export const BrowserEventSchema = z.discriminatedUnion("type", [
-  base.extend({ type: z.literal("tab.connected"), tabId: z.number(), url: z.string(), title: z.string() }),
-  base.extend({ type: z.literal("tab.updated"), tabId: z.number(), url: z.string(), title: z.string() }),
-  base.extend({ type: z.literal("tab.switched"), tabId: z.number(), previousTabId: z.number().optional() }),
-  base.extend({ type: z.literal("tab.closed"), tabId: z.number() }),
-  base.extend({ type: z.literal("user.click"), selector: z.string(), text: z.string().optional(), x: z.number(), y: z.number() }),
-  base.extend({ type: z.literal("user.input"), selector: z.string(), valuePreview: z.string() }),
-  base.extend({ type: z.literal("navigation"), from: z.string(), to: z.string(), navigationType: z.enum(["reload", "back_forward", "new", "spa"]).optional(), title: z.string().optional(), referrer: z.string().optional() }),
-  base.extend({ type: z.literal("console.log"), level: z.enum(["log", "warn", "error", "info", "debug", "trace"]), message: z.string(), stack: z.string().optional(), timestamp: z.number() }),
-  base.extend({ type: z.literal("network.request"), requestId: z.string(), method: z.string(), url: z.string(), requestHeaders: z.array(HttpHeaderSchema).optional(), requestBody: z.string().optional(), queryParams: z.record(z.string()).optional(), mimeType: z.string().optional() }),
-  base.extend({ type: z.literal("network.response"), requestId: z.string(), status: z.number(), statusText: z.string().optional(), durationMs: z.number(), responseHeaders: z.array(HttpHeaderSchema).optional(), responseBody: z.string().optional(), contentType: z.string().optional(), size: z.number().optional(), errorType: z.enum(["timeout", "abort", "cors", "network-error"]).optional() }),
-  base.extend({ type: z.literal("screenshot.captured"), fileId: z.string(), dataUrl: z.string().optional() }),
+  base.extend({ type: z.literal(EVENT_TAB_CONNECTED), tabId: z.number(), url: z.string(), title: z.string() }),
+  base.extend({ type: z.literal(EVENT_TAB_UPDATED), tabId: z.number(), url: z.string(), title: z.string() }),
+  base.extend({ type: z.literal(EVENT_TAB_SWITCHED), tabId: z.number(), previousTabId: z.number().optional(), url: z.string(), title: z.string() }),
+  base.extend({ type: z.literal(EVENT_TAB_CLOSED), tabId: z.number() }),
+  base.extend({ type: z.literal(EVENT_USER_CLICK), selector: z.string(), text: z.string().optional(), x: z.number(), y: z.number() }),
+  base.extend({ type: z.literal(EVENT_USER_INPUT), selector: z.string(), valuePreview: z.string() }),
+  base.extend({ type: z.literal(EVENT_NAVIGATION), from: z.string(), to: z.string(), navigationType: z.enum(["reload", "back_forward", "new", "spa"]).optional(), title: z.string().optional(), referrer: z.string().optional() }),
+  base.extend({ type: z.literal(EVENT_CONSOLE_LOG), level: z.enum(["log", "warn", "error", "info", "debug", "trace"]), message: z.string(), stack: z.string().optional(), timestamp: z.number() }),
+  base.extend({ type: z.literal(EVENT_NETWORK_REQUEST), requestId: z.string(), method: z.string(), url: z.string(), requestHeaders: z.array(HttpHeaderSchema).optional(), requestBody: z.string().optional(), queryParams: z.record(z.string()).optional(), mimeType: z.string().optional() }),
+  base.extend({ type: z.literal(EVENT_NETWORK_RESPONSE), requestId: z.string(), status: z.number(), statusText: z.string().optional(), durationMs: z.number(), responseHeaders: z.array(HttpHeaderSchema).optional(), responseBody: z.string().optional(), contentType: z.string().optional(), size: z.number().optional(), errorType: z.enum(["timeout", "abort", "cors", "network-error"]).optional() }),
+  base.extend({ type: z.literal(EVENT_SCREENSHOT_CAPTURED), fileId: z.string(), dataUrl: z.string().optional() }),
 ]);
 
 export const BrowserCommandSchema = z.discriminatedUnion("type", [
-  base.extend({ type: z.literal("capture.visibleTab") }),
-  base.extend({ type: z.literal("highlight.element"), selector: z.string() }),
-  base.extend({ type: z.literal("click"), selector: z.string() }),
-  base.extend({ type: z.literal("type"), selector: z.string(), text: z.string() }),
-  base.extend({ type: z.literal("read.dom"), selector: z.string().optional() }),
-  base.extend({ type: z.literal("get.pageContext") }),
+  base.extend({ type: z.literal(COMMAND_CAPTURE_VISIBLE_TAB) }),
+  base.extend({ type: z.literal(COMMAND_HIGHLIGHT_ELEMENT), selector: z.string() }),
+  base.extend({ type: z.literal(COMMAND_CLICK), selector: z.string() }),
+  base.extend({ type: z.literal(COMMAND_TYPE), selector: z.string(), text: z.string() }),
+  base.extend({ type: z.literal(COMMAND_READ_DOM), selector: z.string().optional() }),
+  base.extend({ type: z.literal(COMMAND_GET_PAGE_CONTEXT) }),
 ]);

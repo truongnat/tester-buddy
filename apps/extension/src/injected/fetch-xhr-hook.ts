@@ -2,6 +2,11 @@
   const CHANNEL = "__testerbuddy__";
   const MAX_BODY_SIZE = 5 * 1024; // 5KB — chrome.runtime.sendMessage limit ~64KB
 
+  const EVENT_NETWORK_REQUEST = "network.request";
+  const EVENT_NETWORK_RESPONSE = "network.response";
+  const EVENT_CONSOLE_LOG = "console.log";
+  const EVENT_NAVIGATION = "navigation";
+
   function dispatch(detail: unknown) {
     window.dispatchEvent(new CustomEvent(CHANNEL, { detail }));
   }
@@ -150,7 +155,7 @@
     } catch {}
 
     dispatch({
-      type: "network.request",
+      type: EVENT_NETWORK_REQUEST,
       requestId: rid_,
       method,
       url,
@@ -191,7 +196,7 @@
       }
 
       dispatch({
-        type: "network.response",
+        type: EVENT_NETWORK_RESPONSE,
         requestId: rid_,
         status: res.status,
         statusText: res.statusText || undefined,
@@ -204,7 +209,7 @@
       return res;
     } catch (err: any) {
       dispatch({
-        type: "network.response",
+        type: EVENT_NETWORK_RESPONSE,
         requestId: rid_,
         status: 0,
         durationMs: Date.now() - start,
@@ -238,7 +243,7 @@
     xhrMap.set(this, state);
 
     dispatch({
-      type: "network.request",
+      type: EVENT_NETWORK_REQUEST,
       requestId: state.rid,
       method: state.method,
       url: state.url,
@@ -295,7 +300,7 @@
       } catch {}
 
       dispatch({
-        type: "network.response",
+        type: EVENT_NETWORK_RESPONSE,
         requestId: s.rid,
         status: this.status,
         statusText: this.statusText || undefined,
@@ -311,21 +316,21 @@
       const s = xhrMap.get(this);
       if (!s || s.done) return;
       s.done = true;
-      dispatch({ type: "network.response", requestId: s.rid, status: 0, durationMs: Date.now() - s.start, errorType: "network-error" });
+      dispatch({ type: EVENT_NETWORK_RESPONSE, requestId: s.rid, status: 0, durationMs: Date.now() - s.start, errorType: "network-error" });
     }, { once: true });
 
     this.addEventListener("abort", () => {
       const s = xhrMap.get(this);
       if (!s || s.done) return;
       s.done = true;
-      dispatch({ type: "network.response", requestId: s.rid, status: 0, durationMs: Date.now() - s.start, errorType: "abort" });
+      dispatch({ type: EVENT_NETWORK_RESPONSE, requestId: s.rid, status: 0, durationMs: Date.now() - s.start, errorType: "abort" });
     }, { once: true });
 
     this.addEventListener("timeout", () => {
       const s = xhrMap.get(this);
       if (!s || s.done) return;
       s.done = true;
-      dispatch({ type: "network.response", requestId: s.rid, status: 0, durationMs: Date.now() - s.start, errorType: "timeout" });
+      dispatch({ type: EVENT_NETWORK_RESPONSE, requestId: s.rid, status: 0, durationMs: Date.now() - s.start, errorType: "timeout" });
     }, { once: true });
 
     _send.call(this, body);
@@ -335,7 +340,7 @@
   function hookConsole(level: "log" | "warn" | "info" | "debug" | "trace") {
     const orig = (console as any)[level].bind(console);
     (console as any)[level] = function (...args: any[]) {
-      dispatch({ type: "console.log", level, message: args.map(String).join(" "), stack: level === "trace" ? getStack() : undefined, timestamp: Date.now() });
+      dispatch({ type: EVENT_CONSOLE_LOG, level, message: args.map(String).join(" "), stack: level === "trace" ? getStack() : undefined, timestamp: Date.now() });
       orig(...args);
     };
   }
@@ -343,7 +348,7 @@
 
   const _error = console.error.bind(console);
   console.error = function (...args: any[]) {
-    dispatch({ type: "console.log", level: "error", message: args.map(String).join(" "), stack: getStack(), timestamp: Date.now() });
+    dispatch({ type: EVENT_CONSOLE_LOG, level: "error", message: args.map(String).join(" "), stack: getStack(), timestamp: Date.now() });
     _error(...args);
   };
 
@@ -355,7 +360,7 @@
       const r = orig.apply(this, args as any);
       const to = location.href;
       if (from !== to) {
-        dispatch({ type: "navigation", from, to, navigationType: "spa", title: document.title, referrer: document.referrer || undefined });
+        dispatch({ type: EVENT_NAVIGATION, from, to, navigationType: "spa", title: document.title, referrer: document.referrer || undefined });
       }
       return r;
     };

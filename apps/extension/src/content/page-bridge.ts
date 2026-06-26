@@ -6,7 +6,7 @@ export function redactValue(el: HTMLInputElement): string {
 }
 
 export class PageBridge {
-  send(event: Omit<BrowserEvent, never>) {
+  send(event: BrowserEvent) {
     try {
       chrome.runtime.sendMessage({ source: "testerbuddy:event", event });
     } catch {

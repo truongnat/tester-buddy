@@ -44,10 +44,9 @@ export function BugReportScreen() {
   const [draft, setDraft] = useState<BugReport>(EMPTY_DRAFT());
   const [isSaved, setIsSaved] = useState(false);
 
-  // Load all reports from database
   const loadReports = async () => {
     if (window.testerbuddy?.getBugReports) {
-      const all = await window.testerbuddy.getBugReports();
+      const all = await window.testerbuddy.getBugReports() as BugReport[];
       setReports(all);
     }
   };
