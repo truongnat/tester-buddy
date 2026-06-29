@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, FolderOpen, Bug, Film, Link2, Pencil, Trash2, Ticket, Save, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { Input, Textarea } from "../../components/ui/input";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
+import { useProjects } from "../../lib/useProjects";
+import { useSearch } from "../../lib/useSearch";
 
 type ProjectRecord = {
   id: string;
@@ -11,8 +13,8 @@ type ProjectRecord = {
   key: string;
   url?: string;
   description?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 type ProjectForm = {
@@ -68,11 +70,10 @@ const EMPTY_PROJECT: ProjectForm = { name: "", description: "" };
 const EMPTY_TICKET: TicketForm = { code: "", title: "", description: "", status: "todo", externalUrl: "" };
 
 export function ProjectWorkspaceScreen() {
-  const [projects, setProjects] = useState<ProjectRecord[]>([]);
+  const { projects, refresh: refreshProjects } = useProjects();
   const [tickets, setTickets] = useState<TicketRecord[]>([]);
   const [bugs, setBugs] = useState<BugReportRecord[]>([]);
   const [media, setMedia] = useState<MediaRecord[]>([]);
-  const [search, setSearch] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [projectForm, setProjectForm] = useState<ProjectForm>(EMPTY_PROJECT);
@@ -84,11 +85,6 @@ export function ProjectWorkspaceScreen() {
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [deleteState, setDeleteState] = useState<DeleteState>(null);
 
-  const loadProjects = async () => {
-    const next = ((await window.testerbuddy?.getProjects()) ?? []) as ProjectRecord[];
-    setProjects(next);
-    setSelectedProjectId((current) => current && next.some((item) => item.id === current) ? current : next[0]?.id ?? null);
-  };
 
   const loadProjectDetail = async (projectId: string | null, preferredTicketId?: string | null) => {
     if (!projectId) {
@@ -114,18 +110,16 @@ export function ProjectWorkspaceScreen() {
   };
 
   useEffect(() => {
-    void loadProjects();
-  }, []);
+    if (projects.length > 0) {
+      setSelectedProjectId((current) => current && projects.some((p) => p.id === current) ? current : projects[0]?.id ?? null);
+    }
+  }, [projects]);
 
   useEffect(() => {
     void loadProjectDetail(selectedProjectId);
   }, [selectedProjectId]);
 
-  const filteredProjects = useMemo(() => projects.filter((project) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return project.name.toLowerCase().includes(q) || project.key.toLowerCase().includes(q) || project.description?.toLowerCase().includes(q);
-  }), [projects, search]);
+  const { query: search, setQuery: setSearch, filtered: filteredProjects } = useSearch(projects, (project) => `${project.name} ${project.key} ${project.description ?? ""}`);
 
   const selectedProject = projects.find((item) => item.id === selectedProjectId) ?? null;
   const selectedTicket = tickets.find((item) => item.id === selectedTicketId) ?? null;
@@ -190,7 +184,7 @@ export function ProjectWorkspaceScreen() {
     setEditingProjectId(null);
     setProjectForm(EMPTY_PROJECT);
     setProjectFormInitial(EMPTY_PROJECT);
-    await loadProjects();
+    refreshProjects();
   };
 
   const submitTicket = async () => {
@@ -233,7 +227,7 @@ export function ProjectWorkspaceScreen() {
     if (!deleteState) return;
     if (deleteState.kind === "project") {
       await window.testerbuddy?.deleteProject(deleteState.id);
-      await loadProjects();
+      refreshProjects();
     } else {
       await window.testerbuddy?.deleteTicket(deleteState.id);
       if (selectedProject) {

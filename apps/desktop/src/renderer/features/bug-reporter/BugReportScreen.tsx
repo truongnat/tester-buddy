@@ -5,10 +5,12 @@ import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { Input, Textarea } from "../../components/ui/input";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
+import { useProjects } from "../../lib/useProjects";
+import { summarizeEvent } from "../../lib/summarizeEvent";
 import type { TimelineEvent } from "@testerbuddy/shared";
 
 type Severity = "low" | "medium" | "high" | "critical";
-type ProjectRecord = { id: string; name: string; key: string };
+
 type TicketRecord = { id: string; projectId: string; code: string; title: string; externalUrl?: string; status: string };
 type MediaRecord = { id: string; ticketId: string; kind: "screenshot" | "video"; filepath: string; bugId?: string; createdAt: string };
 
@@ -54,27 +56,6 @@ const EMPTY_DRAFT = (): BugReportDraft => ({
   mediaIds: [],
   evidence: [],
 });
-
-function summarizeEvent(event: TimelineEvent["event"]) {
-  switch (event.type) {
-    case "user.click":
-      return `Click ${event.text ? `"${event.text}"` : event.selector}`;
-    case "user.input":
-      return `Type "${event.valuePreview}" on ${event.selector}`;
-    case "navigation":
-      return `Navigate to ${event.to}`;
-    case "console.log":
-      return event.level === "error" ? event.message : `[${event.level}] ${event.message}`;
-    case "network.request":
-      return `${event.method} ${event.url}`;
-    case "network.response":
-      return `${event.status} response`;
-    case "screenshot.captured":
-      return "Screenshot captured";
-    default:
-      return event.type;
-  }
-}
 
 function stepsToText(steps: TimelineEvent[]) {
   return steps.map((step, idx) => `${idx + 1}. ${summarizeEvent(step.event)}`).join("\n");
@@ -149,7 +130,7 @@ function promptForGitHubConfig(): GitHubExportConfig | null {
 }
 
 export function BugReportScreen() {
-  const [projects, setProjects] = useState<ProjectRecord[]>([]);
+  const { projects } = useProjects();
   const [tickets, setTickets] = useState<TicketRecord[]>([]);
   const [availableMedia, setAvailableMedia] = useState<MediaRecord[]>([]);
   const [reports, setReports] = useState<BugReportDraft[]>([]);
@@ -161,11 +142,6 @@ export function BugReportScreen() {
   const setField = <K extends keyof BugReportDraft>(key: K, value: BugReportDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
     setIsSaved(false);
-  };
-
-  const loadProjects = async () => {
-    const nextProjects = ((await window.testerbuddy?.getProjects()) ?? []) as ProjectRecord[];
-    setProjects(nextProjects);
   };
 
   const loadTickets = async (projectId: string) => {
@@ -184,7 +160,6 @@ export function BugReportScreen() {
   };
 
   useEffect(() => {
-    void loadProjects();
     void loadReports();
 
     const structuredSteps = parseSessionSteps(sessionStorage.getItem("testerbuddy:temp_steps_json"));
