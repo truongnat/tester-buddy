@@ -1,4 +1,4 @@
-import { EVENT_TAB_CONNECTED } from "@testerbuddy/protocol";
+import { EVENT_TAB_CONNECTED, EVENT_TAB_SWITCHED, EVENT_TAB_UPDATED } from "@testerbuddy/protocol";
 import { WebSocket } from "ws";
 import { randomUUID } from "crypto";
 import type { BrowserEvent } from "@testerbuddy/protocol";
@@ -50,11 +50,13 @@ export class ExtensionSessionRegistry {
   handleMessage(sessionId: string, msg: BrowserEvent) {
     const session = this.sessions.get(sessionId);
     if (!session) return;
-    if (msg.type === EVENT_TAB_CONNECTED) {
+    if (msg.type === EVENT_TAB_CONNECTED || msg.type === EVENT_TAB_SWITCHED) {
       session.activeTabId = msg.tabId;
       session.activeUrl = msg.url;
     }
-    console.log(`[registry] firing ${this.eventListeners.length} listeners for`, msg.type);
+    if (msg.type === EVENT_TAB_UPDATED && session.activeTabId === msg.tabId) {
+      session.activeUrl = msg.url;
+    }
     this.eventListeners.forEach(fn => fn(sessionId, msg));
   }
 

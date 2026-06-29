@@ -15,14 +15,14 @@ export function AppShell() {
   return (
     <div className="flex h-screen bg-bg overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-48 shrink-0 flex flex-col border-r border-border bg-surface">
+      <aside className="w-48 shrink-0 flex flex-col border-r border-border bg-surface bg-dots">
         {/* Logo with status */}
         <div className="titlebar flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <span className="w-5 h-5 rounded bg-primary flex items-center justify-center">
               <Activity size={12} className="text-white" />
             </span>
-            <span className="font-semibold text-sm text-text">TesterBuddy</span>
+            <span className="font-display text-sm font-semibold text-text">TesterBuddy</span>
           </div>
           
           {/* Connection Dot */}

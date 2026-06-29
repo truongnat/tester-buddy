@@ -5,6 +5,13 @@ let mediaRecorder: MediaRecorder | null = null;
 let mediaStream: MediaStream | null = null;
 const chunks: Blob[] = [];
 let uploadMeta: { projectId: string; ticketId: string } | null = null;
+let pairingToken = "";
+
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.pairingToken) {
+    pairingToken = changes.pairingToken.newValue || "";
+  }
+});
 
 const originalLog = console.log;
 const originalError = console.error;
@@ -39,6 +46,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 async function startRecording(streamId: string) {
   try {
+    if (!pairingToken) {
+      const stored = await chrome.storage.local.get("pairingToken");
+      pairingToken = stored.pairingToken || "";
+    }
     chunks.length = 0;
 
     mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -73,6 +84,7 @@ async function startRecording(streamId: string) {
 
         const response = await fetch(`${BRIDGE_UPLOAD_URL}?${params}`, {
           method: "POST",
+          headers: pairingToken ? { "X-TesterBuddy-Token": pairingToken } : undefined,
           body: blob
         });
 

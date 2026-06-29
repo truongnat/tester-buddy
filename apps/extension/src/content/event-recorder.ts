@@ -9,6 +9,7 @@ const EVENT_USER_INPUT = "user.input";
 
 export class EventRecorder {
   private lastSpaNavigation = 0;
+  private active = false;
 
   constructor(private bridge: PageBridge, private channel: string) {
     // Track SPA navigations from injected script's history hooks.
@@ -21,6 +22,7 @@ export class EventRecorder {
   }
 
   private sendNavigation(navigationType: "spa" | "reload" | "back_forward" | "new", to: string, from?: string) {
+    if (!this.active) return;
     const event: BrowserEvent = {
       type: EVENT_NAVIGATION,
       from: from || document.referrer || window.location.href,
@@ -34,11 +36,12 @@ export class EventRecorder {
 
   start() {
     document.addEventListener("click", (e) => {
-      const el = e.target as HTMLElement;
+      if (!this.active) return;
+      const el = e.target;
       const event: BrowserEvent = {
         type: EVENT_USER_CLICK,
         selector: getSelector(el),
-        text: el.textContent?.trim().slice(0, 100),
+        text: el instanceof Node ? el.textContent?.trim().slice(0, 100) : undefined,
         x: e.clientX,
         y: e.clientY,
       };
@@ -46,8 +49,10 @@ export class EventRecorder {
     }, { capture: true, passive: true });
 
     document.addEventListener("input", (e) => {
-      const el = e.target as HTMLInputElement;
-      if (el.type === "password") return;
+      if (!this.active) return;
+      const el = e.target;
+      if (!(el instanceof HTMLElement)) return;
+      if (el instanceof HTMLInputElement && el.type === "password") return;
       const event: BrowserEvent = {
         type: EVENT_USER_INPUT,
         selector: getSelector(el),
@@ -65,6 +70,7 @@ export class EventRecorder {
     if (typeof PerformanceObserver !== "undefined") {
       try {
         const observer = new PerformanceObserver((list) => {
+          if (!this.active) return;
           for (const entry of list.getEntries()) {
             const nav = entry as PerformanceNavigationTiming;
             if (nav.type === "navigate" || nav.type === "reload" || nav.type === "back_forward") {
@@ -80,5 +86,9 @@ export class EventRecorder {
         // PerformanceObserver may not be available in all contexts.
       }
     }
+  }
+
+  setActive(active: boolean) {
+    this.active = active;
   }
 }

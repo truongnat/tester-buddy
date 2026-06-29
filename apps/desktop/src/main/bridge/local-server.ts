@@ -1,9 +1,10 @@
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import { existsSync, mkdirSync, writeFile } from "fs";
-import { join } from "path";
+import { join, resolve } from "path";
 import { app } from "electron";
 import { cleanName } from "@testerbuddy/shared";
 import { BRIDGE_PORT, BRIDGE_HOST, UPLOAD_PATH } from "@testerbuddy/protocol";
+import { randomUUID } from "crypto";
 import { WebSocketHub } from "./websocket-hub";
 import { PairingService } from "./pairing.service";
 
@@ -18,6 +19,8 @@ export interface VideoUpload {
 
 type UploadCallback = (upload: VideoUpload) => void;
 
+const MAX_UPLOAD_BYTES = 250 * 1024 * 1024;
+
 export class LocalServer {
   readonly pairing = new PairingService();
   readonly hub = new WebSocketHub(this.pairing);
@@ -29,11 +32,20 @@ export class LocalServer {
 
   async start() {
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      const origin = req.headers.origin;
+      if (origin && this.isAllowedOrigin(origin)) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Vary", "Origin");
+      }
+      res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-TesterBuddy-Token");
 
       if (req.method === "OPTIONS") {
+        if (!origin || !this.isAllowedOrigin(origin)) {
+          res.writeHead(403);
+          res.end();
+          return;
+        }
         res.writeHead(204);
         res.end();
         return;
@@ -57,26 +69,67 @@ export class LocalServer {
     console.log(`[bridge] Pairing token: ${this.pairing.getToken()}`);
   }
 
+  private isAllowedOrigin(origin: string) {
+    return origin.startsWith("chrome-extension://");
+  }
+
+  private isAuthorized(req: IncomingMessage) {
+    const headerToken = req.headers["x-testerbuddy-token"];
+    const token = Array.isArray(headerToken) ? headerToken[0] : headerToken;
+    return typeof token === "string" && this.pairing.validate(token);
+  }
+
+  private ensureInsideRoot(targetDir: string) {
+    const root = resolve(app.getPath("documents"), "TesterBuddy");
+    const resolvedTarget = resolve(targetDir);
+    return resolvedTarget === root || resolvedTarget.startsWith(`${root}/`);
+  }
+
   private handleUpload(req: IncomingMessage, res: ServerResponse) {
+    if (!this.isAuthorized(req)) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+
     const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
     const tabId = url.searchParams.get("tabId") || "unknown";
     const projectId = url.searchParams.get("projectId") || "unknown";
     const ticketId = url.searchParams.get("ticketId") || "unknown";
+    const contentLength = Number(req.headers["content-length"] || 0);
+    if (contentLength > MAX_UPLOAD_BYTES) {
+      res.writeHead(413, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Upload too large" }));
+      return;
+    }
 
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let totalBytes = 0;
+    req.on("data", (chunk: Buffer) => {
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_UPLOAD_BYTES) {
+        req.destroy(new Error("Upload too large"));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => {
       const buffer = Buffer.concat(chunks);
       const folderName = `${cleanName(tabId)}_${cleanName(projectId)}_${cleanName(ticketId)}`;
       const documentsDir = app.getPath("documents");
       const targetDir = join(documentsDir, "TesterBuddy", folderName);
+      if (!this.ensureInsideRoot(targetDir)) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Invalid upload path" }));
+        return;
+      }
 
       if (!existsSync(targetDir)) {
         mkdirSync(targetDir, { recursive: true });
       }
 
       const ts = Date.now();
-      const rand = Math.random().toString(36).substring(2, 6);
+      const rand = randomUUID().slice(0, 8);
       const webmPath = join(targetDir, `video_${ts}_${rand}.webm`);
       const mp4Path = join(targetDir, `video_${ts}_${rand}.mp4`);
 
@@ -98,8 +151,9 @@ export class LocalServer {
     });
 
     req.on("error", (err) => {
-      console.error("[upload] Request error:", err);
-      res.writeHead(500);
+      const status = err.message === "Upload too large" ? 413 : 500;
+      console.error("[upload] Request error:", err.message);
+      res.writeHead(status);
       res.end(JSON.stringify({ error: err.message }));
     });
   }

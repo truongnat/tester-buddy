@@ -1,7 +1,7 @@
 import initSqlJs from "sql.js";
 import type { Database } from "sql.js";
 import { join } from "path";
-import { writeFileSync, readFileSync, existsSync } from "fs";
+import { writeFileSync, readFileSync, existsSync, unlinkSync } from "fs";
 import { app } from "electron";
 import { randomUUID } from "crypto";
 import type { BrowserEvent } from "@testerbuddy/protocol";
@@ -413,7 +413,7 @@ export class DatabaseManager {
   }
 
   getEvents(sessionId: string): EventRecord[] {
-    const stmt = this.db.prepare("SELECT * FROM events WHERE sessionId = ? ORDER BY timestamp ASC");
+    const stmt = this.db.prepare("SELECT * FROM events WHERE sessionId = ? ORDER BY timestamp DESC");
     stmt.bind([sessionId]);
     const result: EventRecord[] = [];
     while (stmt.step()) {
@@ -462,6 +462,7 @@ export class DatabaseManager {
   }
 
   deleteProject(id: string) {
+    this.removeMediaFiles(this.getMedia({ projectId: id }));
     const ticketIds = this.getTickets(id).map((ticket) => ticket.id);
     for (const ticketId of ticketIds) {
       this.deleteTicket(ticketId);
@@ -537,6 +538,7 @@ export class DatabaseManager {
   }
 
   deleteTicket(id: string) {
+    this.removeMediaFiles(this.getMedia({ ticketId: id }));
     this.db.run("UPDATE media SET bugId = NULL WHERE ticketId = ?", [id]);
     this.db.run("DELETE FROM media WHERE ticketId = ?", [id]);
     this.db.run("DELETE FROM bug_reports WHERE ticketId = ?", [id]);
@@ -777,6 +779,17 @@ export class DatabaseManager {
       sourceEventId: row.sourceEventId ? (row.sourceEventId as string) : undefined,
       createdAt: row.createdAt as string,
     };
+  }
+
+  private removeMediaFiles(items: MediaRecord[]) {
+    for (const item of items) {
+      try {
+        if (item.filepath && existsSync(item.filepath)) unlinkSync(item.filepath);
+      } catch {}
+      try {
+        if (item.thumbnailPath && existsSync(item.thumbnailPath)) unlinkSync(item.thumbnailPath);
+      } catch {}
+    }
   }
 
   private mapBugReport(row: Record<string, unknown>): BugReportRecord {

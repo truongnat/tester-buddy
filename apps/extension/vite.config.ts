@@ -25,6 +25,10 @@ function rewriteReferences(value: string) {
   return next;
 }
 
+function wrapInIife(value: string) {
+  return `(() => {\n${value}\n})();\n`;
+}
+
 function versionExtensionAssets(): Plugin {
   return {
     name: "testerbuddy-version-extension-assets",
@@ -44,15 +48,24 @@ function versionExtensionAssets(): Plugin {
         const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
         manifest.version_name = `${manifest.version}+${buildVersion}`;
         manifest.background.service_worker = renames.get(manifest.background.service_worker) ?? manifest.background.service_worker;
-        manifest.content_scripts = manifest.content_scripts?.map((script: { js?: string[] }) => ({
-          ...script,
-          js: script.js?.map((file) => renames.get(file) ?? file),
-        }));
+        if (manifest.content_scripts) {
+          manifest.content_scripts = manifest.content_scripts.map((script: { js?: string[] }) => ({
+            ...script,
+            js: script.js?.map((file) => renames.get(file) ?? file),
+          }));
+        }
         manifest.web_accessible_resources = manifest.web_accessible_resources?.map((item: { resources?: string[] }) => ({
           ...item,
           resources: item.resources?.map((file) => renames.get(file) ?? file),
         }));
         writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      }
+
+      for (const scriptName of ["content", "injected"] as const) {
+        const scriptPath = join(distDir, versionedFile(scriptName));
+        if (!existsSync(scriptPath)) continue;
+        const raw = readFileSync(scriptPath, "utf8");
+        writeFileSync(scriptPath, wrapInIife(raw));
       }
 
       for (const htmlFile of ["popup.html", "offscreen.html", "picker.html"]) {

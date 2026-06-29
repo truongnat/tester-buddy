@@ -4,19 +4,20 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        bg: "#F5F7F8",
+        bg: "#F4F1EA",
         surface: "#FFFFFF",
-        "surface-muted": "#EDF2F4",
-        text: "#182024",
-        "text-muted": "#687378",
-        border: "#D9E1E4",
-        primary: "#0F9F8F",
-        "primary-hover": "#0D8E7F",
+        "surface-muted": "#EDE9E2",
+        text: "#1A1A1A",
+        "text-muted": "#6B6560",
+        border: "#D9D2C8",
+        primary: "#C84B31",
+        "primary-hover": "#B33E28",
         error: "#E5383B",
         success: "#1F9D55",
-        warning: "#C27C0E",
+        warning: "#D97706",
       },
       fontFamily: {
+        display: ["Fraunces", "Georgia", "serif"],
         sans: ["Inter", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "Menlo", "monospace"],
       },

@@ -11,7 +11,12 @@ declare const __TESTERBUDDY_CONTENT_FILE__: string;
 
 const tabRegistry = new TabRegistry();
 const router = new Router(tabRegistry);
-const ws = new WsClient({ router, onConnected: () => void reinjectOpenTabs() });
+const ws = new WsClient({
+  router,
+  onConnected: () => {
+    void syncActiveTab("connect");
+  },
+});
 router.setWs(ws);
 
 function canInject(url?: string) {
@@ -27,10 +32,10 @@ async function hasLiveContentScript(tabId: number) {
   }
 }
 
-async function ensureContentScript(tabId: number, url?: string, force = false) {
+async function ensureContentScript(tabId: number, url?: string) {
   if (!canInject(url)) return;
 
-  if (!force && await hasLiveContentScript(tabId)) {
+  if (await hasLiveContentScript(tabId)) {
     return;
   }
 
@@ -44,36 +49,74 @@ async function ensureContentScript(tabId: number, url?: string, force = false) {
   }
 }
 
-async function reinjectOpenTabs(force = false) {
+async function setTabActiveState(tabId: number | undefined, active: boolean) {
+  if (tabId === undefined) return;
   try {
-    const tabs = await chrome.tabs.query({ url: ["http://*/*", "https://*/*"] });
-    await Promise.all(tabs.map((tab) => tab.id ? ensureContentScript(tab.id, tab.url, force) : Promise.resolve()));
+    await chrome.tabs.sendMessage(tabId, { source: "testerbuddy:set-active", active });
+  } catch {
+    // tab may not have the content script yet
+  }
+}
+
+async function activateTabContent(tabId: number, url?: string) {
+  await ensureContentScript(tabId, url);
+  await setTabActiveState(tabId, true);
+}
+
+async function syncActiveTab(reason: "startup" | "connect" | "window-focus" = "startup") {
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (!activeTab?.id) return;
+    const { changed, previousTabId } = tabRegistry.setActive(activeTab.id);
+    const updated = tabRegistry.updateMeta(activeTab.id, {
+      url: activeTab.url ?? "",
+      title: activeTab.title ?? "",
+    });
+    if (changed) {
+      await setTabActiveState(previousTabId, false);
+    }
+    if (activeTab.status === "complete") {
+      await activateTabContent(activeTab.id, activeTab.url);
+    }
+    if (!changed && reason !== "startup") return;
+    const event: BrowserEvent = {
+      type: EVENT_TAB_SWITCHED,
+      tabId: activeTab.id,
+      previousTabId,
+      url: updated.url,
+      title: updated.title,
+    };
+    ws.send(event);
   } catch (error) {
-    console.warn("[TesterBuddy] Failed to reinject open tabs", error);
+    console.warn("[TesterBuddy] Failed to sync active tab", reason, error);
   }
 }
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("[TesterBuddy] Extension installed");
-  void reinjectOpenTabs(true);
+  void syncActiveTab("startup");
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  void reinjectOpenTabs(true);
+  void syncActiveTab("startup");
 });
 
-void reinjectOpenTabs(true);
+void syncActiveTab("startup");
 
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   const { changed, previousTabId } = tabRegistry.setActive(tabId);
   if (changed) {
+    await setTabActiveState(previousTabId, false);
     let url = "";
     let title = "";
     try {
       const tab = await chrome.tabs.get(tabId);
       url = tab.url ?? "";
       title = tab.title ?? "";
-      void ensureContentScript(tabId, url);
+      tabRegistry.updateMeta(tabId, { url, title });
+      if (tab.status === "complete") {
+        await activateTabContent(tabId, url);
+      }
     } catch {}
     const event: BrowserEvent = { type: EVENT_TAB_SWITCHED, tabId, previousTabId, url, title };
     ws.send(event);
@@ -95,8 +138,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     ws.send(event);
   }
 
-  if (changeInfo.status === "loading" || changeInfo.status === "complete") {
-    void ensureContentScript(tabId, tab.url, changeInfo.status === "complete");
+  if (tabRegistry.getActiveTabId() === tabId && changeInfo.status === "complete") {
+    void activateTabContent(tabId, tab.url);
   }
 
   if (changeInfo.status === "complete" && tab.url && !tabRegistry.getMeta(tabId)?.url) {
@@ -110,8 +153,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   ws.send(event);
 });
 
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) return;
+  void syncActiveTab("window-focus");
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return router.handle(msg, sender, sendResponse);
 });
-
-

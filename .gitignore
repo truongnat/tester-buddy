@@ -5,6 +5,7 @@ dist/
 .DS_Store
 Thumbs.db
 *.local
+.env
 
 # Bundled ffmpeg binary (downloaded by scripts/download-ffmpeg.cjs)
 apps/desktop/resources/ffmpeg

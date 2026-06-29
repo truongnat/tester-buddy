@@ -3,6 +3,7 @@ import { Plus, FolderOpen, Bug, Film, Link2, Pencil, Trash2, Ticket, Save, X } f
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { Input, Textarea } from "../../components/ui/input";
+import { Select, SelectItem } from "../../components/ui/select";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { useProjects } from "../../lib/useProjects";
 import { useSearch } from "../../lib/useSearch";
@@ -245,12 +246,12 @@ export function ProjectWorkspaceScreen() {
 
   return (
     <>
-      <div className="flex h-full min-h-0 bg-[#f7f8fb]">
+      <div className="flex h-full min-h-0 bg-bg">
         <aside className="w-80 shrink-0 border-r border-border bg-surface flex flex-col">
           <div className="p-4 border-b border-border space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-text">Projects</p>
+                <p className="font-display text-sm font-semibold text-text">Projects</p>
                 <p className="text-2xs text-text-muted">Real workspace data from the local database.</p>
               </div>
               <Button type="button" variant="ghost" size="icon" onClick={openCreateProjectModal}>
@@ -316,7 +317,7 @@ export function ProjectWorkspaceScreen() {
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h1 className="text-lg font-semibold text-text">{selectedProject.name}</h1>
+                      <h1 className="font-display text-xl font-semibold text-text">{selectedProject.name}</h1>
                       <Badge variant="primary">{selectedProject.key}</Badge>
                     </div>
                     <p className="mt-1 text-xs text-text-muted">Generated project key for storage and media path mapping.</p>
@@ -329,7 +330,7 @@ export function ProjectWorkspaceScreen() {
                           <Icon size={12} />
                           {label}
                         </div>
-                        <p className="mt-2 text-xl font-semibold text-text">{value}</p>
+                        <p className="mt-2 font-display text-xl font-semibold text-text">{value}</p>
                       </div>
                     ))}
                   </div>
@@ -340,7 +341,7 @@ export function ProjectWorkspaceScreen() {
                 <div className="space-y-4 rounded-2xl border border-border bg-surface p-5 shadow-sm">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-sm font-semibold text-text">Tickets</h2>
+                      <h2 className="font-display text-sm font-semibold text-text">Tickets</h2>
                       <p className="text-2xs text-text-muted">Create, edit, and link internal tickets to external trackers.</p>
                     </div>
                     <Button type="button" variant="outline" size="sm" onClick={startCreateTicket}>
@@ -354,12 +355,12 @@ export function ProjectWorkspaceScreen() {
                     <Input placeholder="Ticket title" value={ticketForm.title} onChange={(e) => setTicketForm((prev) => ({ ...prev, title: e.target.value }))} />
                     <Input placeholder="External URL (Jira/GitHub)" value={ticketForm.externalUrl} onChange={(e) => setTicketForm((prev) => ({ ...prev, externalUrl: e.target.value }))} className="md:col-span-2" />
                     <Textarea rows={3} placeholder="Ticket description" value={ticketForm.description} onChange={(e) => setTicketForm((prev) => ({ ...prev, description: e.target.value }))} className="md:col-span-2" />
-                    <select value={ticketForm.status} onChange={(e) => setTicketForm((prev) => ({ ...prev, status: e.target.value as TicketRecord["status"] }))} className="h-10 rounded border border-border bg-surface px-3 text-sm text-text md:col-span-1">
-                      <option value="todo">Todo</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="done">Done</option>
-                      <option value="blocked">Blocked</option>
-                    </select>
+                    <Select value={ticketForm.status} onChange={(v) => setTicketForm((prev) => ({ ...prev, status: v as TicketRecord["status"] }))} className="md:col-span-1">
+                      <SelectItem value="todo">Todo</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="done">Done</SelectItem>
+                      <SelectItem value="blocked">Blocked</SelectItem>
+                    </Select>
                     <div className="flex justify-end gap-2 md:col-span-1">
                       {editingTicketId && <Button type="button" variant="outline" size="sm" onClick={cancelTicketEdit}>Cancel</Button>}
                       <Button type="button" size="sm" onClick={() => void submitTicket()}>
@@ -424,7 +425,7 @@ export function ProjectWorkspaceScreen() {
                   <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h2 className="text-sm font-semibold text-text">Recent Bugs</h2>
+                        <h2 className="font-display text-sm font-semibold text-text">Recent Bugs</h2>
                         <p className="text-2xs text-text-muted">{selectedTicket ? `Filtered to ${selectedTicket.code}` : "Project-wide bug history."}</p>
                       </div>
                       {selectedTicket && <Badge variant="primary">{selectedTicket.code}</Badge>}
@@ -447,7 +448,7 @@ export function ProjectWorkspaceScreen() {
                   <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h2 className="text-sm font-semibold text-text">Recent Media</h2>
+                        <h2 className="font-display text-sm font-semibold text-text">Recent Media</h2>
                         <p className="text-2xs text-text-muted">Filter by ticket or bug from the database, not mocks.</p>
                       </div>
                       <Badge variant="default">{visibleMedia.length}</Badge>
@@ -482,12 +483,12 @@ export function ProjectWorkspaceScreen() {
           <div className="w-full max-w-lg rounded-2xl border border-border bg-surface shadow-2xl">
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
-                <h2 className="text-sm font-semibold text-text">{editingProjectId ? "Edit Project" : "Create Project"}</h2>
+                <h2 className="font-display text-sm font-semibold text-text">{editingProjectId ? "Edit Project" : "Create Project"}</h2>
                 <p className="text-2xs text-text-muted">Project key is generated automatically from the name.</p>
               </div>
-              <button type="button" onClick={closeProjectModal} className="rounded-lg p-1 text-text-muted hover:bg-surface-muted hover:text-text">
+              <Button type="button" variant="ghost" size="icon" onClick={closeProjectModal}>
                 <X size={16} />
-              </button>
+              </Button>
             </div>
             <div className="space-y-4 px-5 py-5">
               <div className="space-y-2">

@@ -55,7 +55,7 @@ export class WsClient {
     if (this.connecting || !this.token) return;
     this.connecting = true;
 
-    this.ws = new WebSocket(`${BRIDGE_WS_URL}?token=${this.token}`);
+    this.ws = new WebSocket(BRIDGE_WS_URL, [`testerbuddy-token.${this.token}`]);
 
     this.ws.onopen = () => {
       console.log("[TesterBuddy] Connected to bridge");
@@ -95,9 +95,14 @@ export class WsClient {
 
   private flushQueue() {
     if (this.ws?.readyState === WebSocket.OPEN) {
+      console.log("[trace:ws-flush] draining queue", { queued: this.queue.length });
       while (this.queue.length > 0) {
         const event = this.queue.shift();
         if (event) {
+          console.log("[trace:runtime->ws] flush send", {
+            type: event.type,
+            tabId: "tabId" in event ? event.tabId : undefined,
+          });
           this.ws.send(JSON.stringify(event));
         }
       }
@@ -116,11 +121,20 @@ export class WsClient {
   }
 
   send(event: BrowserEvent) {
-    console.log("[ws] send, readyState=", this.ws?.readyState, event);
+    console.log("[trace:runtime->ws] send", {
+      readyState: this.ws?.readyState,
+      type: event.type,
+      tabId: "tabId" in event ? event.tabId : undefined,
+      queued: this.queue.length,
+    });
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(event));
     } else {
       this.queue.push(event);
+      console.log("[trace:runtime->ws] queued", {
+        type: event.type,
+        queueSize: this.queue.length,
+      });
     }
   }
 }

@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Plus, Download, Trash2, Save, Check, Paperclip, Video, Image as ImageIcon } from "lucide-react";
+import { Plus, Download, Trash2, Save, Check, Paperclip, Video, Image as ImageIcon, Sparkles } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { Input, Textarea } from "../../components/ui/input";
+import { Select, SelectItem } from "../../components/ui/select";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { useProjects } from "../../lib/useProjects";
 import { summarizeEvent } from "../../lib/summarizeEvent";
+import { cn } from "../../lib/cn";
 import type { TimelineEvent } from "@testerbuddy/shared";
+import { consumeBugReportHandoff } from "../../lib/bug-report-handoff";
 
 type Severity = "low" | "medium" | "high" | "critical";
 
@@ -73,61 +76,8 @@ function normalizeDraft(report: BugReportDraft, evidence: MediaRecord[]) {
   };
 }
 
-function parseSessionSteps(raw: string | null): TimelineEvent[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as TimelineEvent[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-type IssueExportFormat = "jira" | "github";
 type JiraExportConfig = { baseUrl: string; email: string; token: string; projectKey: string; issueType: string };
 type GitHubExportConfig = { repo: string; token: string };
-const JIRA_EXPORT_KEY = "testerbuddy:jira-export-config";
-const GITHUB_EXPORT_KEY = "testerbuddy:github-export-config";
-
-function readStoredConfig<T>(key: string): T | null {
-  const raw = localStorage.getItem(key);
-  if (!raw) return null;
-  try { return JSON.parse(raw) as T; } catch { return null; }
-}
-
-function promptForJiraConfig(): JiraExportConfig | null {
-  const defaults = readStoredConfig<JiraExportConfig>(JIRA_EXPORT_KEY) ?? {
-    baseUrl: "https://your-domain.atlassian.net",
-    email: "",
-    token: "",
-    projectKey: "",
-    issueType: "Bug",
-  };
-  const raw = window.prompt("Jira export config as JSON", JSON.stringify(defaults, null, 2));
-  if (!raw) return null;
-  try {
-    const config = JSON.parse(raw) as JiraExportConfig;
-    localStorage.setItem(JIRA_EXPORT_KEY, JSON.stringify(config));
-    return config;
-  } catch {
-    alert("Invalid Jira config JSON.");
-    return null;
-  }
-}
-
-function promptForGitHubConfig(): GitHubExportConfig | null {
-  const defaults = readStoredConfig<GitHubExportConfig>(GITHUB_EXPORT_KEY) ?? { repo: "owner/repo", token: "" };
-  const raw = window.prompt("GitHub export config as JSON", JSON.stringify(defaults, null, 2));
-  if (!raw) return null;
-  try {
-    const config = JSON.parse(raw) as GitHubExportConfig;
-    localStorage.setItem(GITHUB_EXPORT_KEY, JSON.stringify(config));
-    return config;
-  } catch {
-    alert("Invalid GitHub config JSON.");
-    return null;
-  }
-}
 
 export function BugReportScreen() {
   const { projects } = useProjects();
@@ -138,6 +88,17 @@ export function BugReportScreen() {
   const [draft, setDraft] = useState<BugReportDraft>(EMPTY_DRAFT());
   const [isSaved, setIsSaved] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [jiraConfig, setJiraConfig] = useState<JiraExportConfig>({
+    baseUrl: "https://your-domain.atlassian.net",
+    email: "",
+    token: "",
+    projectKey: "",
+    issueType: "Bug",
+  });
+  const [githubConfig, setGitHubConfig] = useState<GitHubExportConfig>({ repo: "owner/repo", token: "" });
+  const [configStatus, setConfigStatus] = useState<string>("");
+  const [aiStatus, setAiStatus] = useState<string>("");
+  const [aiLoading, setAiLoading] = useState(false);
 
   const setField = <K extends keyof BugReportDraft>(key: K, value: BugReportDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -161,29 +122,23 @@ export function BugReportScreen() {
 
   useEffect(() => {
     void loadReports();
+    window.testerbuddy?.getSecureConfig("jira-export").then((value) => {
+      if (value) setJiraConfig(value as JiraExportConfig);
+    });
+    window.testerbuddy?.getSecureConfig("github-export").then((value) => {
+      if (value) setGitHubConfig(value as GitHubExportConfig);
+    });
 
-    const structuredSteps = parseSessionSteps(sessionStorage.getItem("testerbuddy:temp_steps_json"));
-    const projectId = sessionStorage.getItem("testerbuddy:temp_project_id") ?? "";
-    const ticketId = sessionStorage.getItem("testerbuddy:temp_ticket_id") ?? "";
-    const mediaIds = (() => {
-      const raw = sessionStorage.getItem("testerbuddy:temp_media_ids");
-      if (!raw) return [] as string[];
-      try { return JSON.parse(raw) as string[]; } catch { return []; }
-    })();
-
-    if (structuredSteps.length > 0 || projectId || ticketId || mediaIds.length > 0) {
+    const handoff = consumeBugReportHandoff();
+    if (handoff && (handoff.steps.length > 0 || handoff.projectId || handoff.ticketId || handoff.mediaIds.length > 0)) {
       const next = EMPTY_DRAFT();
-      next.projectId = projectId;
-      next.ticketId = ticketId;
-      next.mediaIds = mediaIds;
-      next.steps = structuredSteps;
-      next.stepsToReproduce = stepsToText(structuredSteps);
+      next.projectId = handoff.projectId;
+      next.ticketId = handoff.ticketId;
+      next.mediaIds = handoff.mediaIds;
+      next.steps = handoff.steps;
+      next.stepsToReproduce = stepsToText(handoff.steps);
       setDraft(next);
       setSelectedId(next.id);
-      sessionStorage.removeItem("testerbuddy:temp_steps_json");
-      sessionStorage.removeItem("testerbuddy:temp_project_id");
-      sessionStorage.removeItem("testerbuddy:temp_ticket_id");
-      sessionStorage.removeItem("testerbuddy:temp_media_ids");
     }
   }, []);
 
@@ -270,9 +225,15 @@ export function BugReportScreen() {
     }
   };
 
-  const handleIssueExport = async (format: IssueExportFormat) => {
-    const config = format === "jira" ? promptForJiraConfig() : promptForGitHubConfig();
-    if (!config) return;
+  const saveSecureConfigs = async () => {
+    await window.testerbuddy?.setSecureConfig("jira-export", jiraConfig);
+    await window.testerbuddy?.setSecureConfig("github-export", githubConfig);
+    setConfigStatus("Saved export configs securely.");
+    window.setTimeout(() => setConfigStatus(""), 1500);
+  };
+
+  const handleIssueExport = async (format: "jira" | "github") => {
+    const config = format === "jira" ? jiraConfig : githubConfig;
     const res = await window.testerbuddy?.exportBug(normalizeDraft(draft, selectedEvidence) as unknown as BugReportDraft, format, config);
     if (res?.success && res.issueUrl) {
       alert(`Bug report exported successfully to:\n${res.issueUrl}`);
@@ -281,13 +242,61 @@ export function BugReportScreen() {
     }
   };
 
+  const handleGenerateAiDraft = async () => {
+    if (draft.steps.length === 0) {
+      setAiStatus("Select timeline steps first.");
+      return;
+    }
+    setAiLoading(true);
+    setAiStatus("");
+    try {
+      const generated = await window.testerbuddy?.generateBugDraft({
+        projectName: selectedProject?.name,
+        ticketLabel: selectedTicket ? `${selectedTicket.code} · ${selectedTicket.title}` : undefined,
+        currentTitle: draft.title,
+        currentDescription: draft.description,
+        steps: draft.steps.map((step) => ({
+          ts: step.ts,
+          summary: summarizeEvent(step.event),
+          eventType: step.event.type,
+        })),
+      }) as {
+        title: string;
+        severity: Severity;
+        description: string;
+        stepsToReproduce: string;
+        expectedResult: string;
+        actualResult: string;
+      } | undefined;
+      if (!generated) {
+        setAiStatus("AI returned no draft.");
+        return;
+      }
+      setDraft((current) => ({
+        ...current,
+        title: generated.title,
+        severity: generated.severity,
+        description: generated.description,
+        stepsToReproduce: generated.stepsToReproduce,
+        expectedResult: generated.expectedResult,
+        actualResult: generated.actualResult,
+      }));
+      setIsSaved(false);
+      setAiStatus("AI draft applied.");
+    } catch (error) {
+      setAiStatus(error instanceof Error ? error.message : "AI draft failed.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <>
-      <div className="flex h-full min-h-0 bg-[#f7f8fb]">
+      <div className="flex h-full min-h-0 bg-bg">
         <aside className="w-72 shrink-0 border-r border-border bg-surface flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <div>
-              <p className="text-sm font-semibold text-text">Saved Reports</p>
+              <p className="font-display text-sm font-semibold text-text">Saved Reports</p>
               <p className="text-2xs text-text-muted">{reports.length} report(s) in scope</p>
             </div>
             <Button type="button" variant="ghost" size="icon" onClick={() => void handleCreateNew()}>
@@ -324,12 +333,16 @@ export function BugReportScreen() {
           <div className="mx-auto max-w-5xl px-8 py-6 space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
               <div>
-                <h1 className="text-base font-semibold text-text">Bug Report Builder</h1>
+                <h1 className="font-display text-lg font-semibold text-text">Bug Report Builder</h1>
                 <p className="text-2xs text-text-muted">Bugs inherit project-ticket context and attach media from the ticket evidence pool.</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => void handleSave()}>
                   {isSaved ? <><Check size={13} className="text-success" />Saved</> : <><Save size={13} />Save Draft</>}
+                </Button>
+                <Button type="button" variant="outline" size="sm" disabled={aiLoading || draft.steps.length === 0} onClick={() => void handleGenerateAiDraft()}>
+                  <Sparkles size={13} />
+                  {aiLoading ? "Generating..." : "AI Draft"}
                 </Button>
                 <Button type="button" variant="outline" size="sm" onClick={() => void handleExport("markdown")}><Download size={13} />Export MD</Button>
                 <Button type="button" size="sm" onClick={() => void handleExport("html")}><Download size={13} />Export HTML</Button>
@@ -337,29 +350,28 @@ export function BugReportScreen() {
                 <Button type="button" variant="outline" size="sm" onClick={() => void handleIssueExport("github")}><Download size={13} />Export GitHub</Button>
               </div>
             </div>
+            {aiStatus && <p className="text-xs text-text-muted">{aiStatus}</p>}
 
             <div className="grid gap-6 xl:grid-cols-[1.25fr_.95fr]">
               <div className="space-y-5">
                 <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <Field label="Project">
-                      <select value={draft.projectId} onChange={(e) => {
-                        setField("projectId", e.target.value);
+                      <Select value={draft.projectId} onChange={(v) => {
+                        setField("projectId", v);
                         setField("ticketId", "");
                         setField("mediaIds", []);
-                      }} className="h-10 w-full rounded border border-border bg-surface px-3 text-sm text-text">
-                        <option value="">Select project</option>
-                        {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-                      </select>
+                      }} placeholder="Select project">
+                        {projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
+                      </Select>
                     </Field>
                     <Field label="Ticket">
-                      <select value={draft.ticketId} onChange={(e) => {
-                        setField("ticketId", e.target.value);
+                      <Select value={draft.ticketId} onChange={(v) => {
+                        setField("ticketId", v);
                         setField("mediaIds", []);
-                      }} className="h-10 w-full rounded border border-border bg-surface px-3 text-sm text-text">
-                        <option value="">Select ticket</option>
-                        {tickets.map((ticket) => <option key={ticket.id} value={ticket.id}>{ticket.code} · {ticket.title}</option>)}
-                      </select>
+                      }} placeholder="Select ticket">
+                        {tickets.map((ticket) => <SelectItem key={ticket.id} value={ticket.id}>{ticket.code} · {ticket.title}</SelectItem>)}
+                      </Select>
                     </Field>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -373,9 +385,9 @@ export function BugReportScreen() {
                   <Field label="Severity">
                     <div className="flex flex-wrap gap-2">
                       {(Object.keys(SEVERITY_CONFIG) as Severity[]).map((severity) => (
-                        <button key={severity} type="button" onClick={() => setField("severity", severity)} className={`rounded-full border px-3 py-1 text-xs font-semibold ${draft.severity === severity ? "border-primary bg-primary/10 text-primary" : "border-border bg-bg text-text-muted"}`}>
+                        <Button key={severity} size="sm" variant={draft.severity === severity ? "soft" : "outline"} className={cn("rounded-full px-3", draft.severity === severity ? "" : "text-text-muted")} onClick={() => setField("severity", severity)}>
                           {SEVERITY_CONFIG[severity].label}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </Field>
@@ -422,7 +434,7 @@ export function BugReportScreen() {
                 <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <h2 className="text-sm font-semibold text-text">Attached Media</h2>
+                      <h2 className="font-display text-sm font-semibold text-text">Attached Media</h2>
                       <p className="text-2xs text-text-muted">Unified evidence region for screenshots and video from the active ticket.</p>
                     </div>
                     <Badge variant="default">{selectedEvidence.length} selected</Badge>
@@ -456,9 +468,40 @@ export function BugReportScreen() {
                 </section>
 
                 <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h2 className="font-display text-sm font-semibold text-text">Issue Export Config</h2>
+                      <p className="text-2xs text-text-muted">Stored via Electron secure storage instead of renderer localStorage.</p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => void saveSecureConfigs()}>
+                      <Save size={13} />
+                      Save Config
+                    </Button>
+                  </div>
+                  {configStatus && <p className="mt-2 text-2xs text-text-muted">{configStatus}</p>}
+                  <div className="mt-4 grid gap-4">
+                    <div className="rounded-xl border border-border bg-bg p-4 space-y-3">
+                      <p className="text-xs font-semibold text-text">Jira</p>
+                      <Input placeholder="Base URL" value={jiraConfig.baseUrl} onChange={(e) => setJiraConfig((prev) => ({ ...prev, baseUrl: e.target.value }))} />
+                      <Input placeholder="Email" value={jiraConfig.email} onChange={(e) => setJiraConfig((prev) => ({ ...prev, email: e.target.value }))} />
+                      <Input placeholder="API token" type="password" value={jiraConfig.token} onChange={(e) => setJiraConfig((prev) => ({ ...prev, token: e.target.value }))} />
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <Input placeholder="Project key" value={jiraConfig.projectKey} onChange={(e) => setJiraConfig((prev) => ({ ...prev, projectKey: e.target.value }))} />
+                        <Input placeholder="Issue type" value={jiraConfig.issueType} onChange={(e) => setJiraConfig((prev) => ({ ...prev, issueType: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border bg-bg p-4 space-y-3">
+                      <p className="text-xs font-semibold text-text">GitHub</p>
+                      <Input placeholder="owner/repo" value={githubConfig.repo} onChange={(e) => setGitHubConfig((prev) => ({ ...prev, repo: e.target.value }))} />
+                      <Input placeholder="GitHub token" type="password" value={githubConfig.token} onChange={(e) => setGitHubConfig((prev) => ({ ...prev, token: e.target.value }))} />
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
                   <div className="flex items-center gap-2">
                     <Paperclip size={14} className="text-primary" />
-                    <h2 className="text-sm font-semibold text-text">Evidence Summary</h2>
+                    <h2 className="font-display text-sm font-semibold text-text">Evidence Summary</h2>
                   </div>
                   <div className="mt-4 space-y-2">
                     {selectedEvidence.length === 0 ? (

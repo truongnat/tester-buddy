@@ -1,9 +1,10 @@
 import { COMMAND_CAPTURE_VISIBLE_TAB } from "@testerbuddy/protocol";
 import type { BrowserEvent, BrowserCommand } from "@testerbuddy/protocol";
 import { ipcMain, BrowserWindow, app, dialog, shell } from "electron";
-import { writeFileSync, existsSync, mkdirSync } from "fs";
+import { writeFileSync, existsSync, mkdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { cleanName } from "@testerbuddy/shared";
+import { z } from "zod";
 import { IPC } from "./channels";
 import type { WebSocketHub } from "../bridge/websocket-hub";
 import type { PairingService } from "../bridge/pairing.service";
@@ -19,6 +20,35 @@ import { AgentCommandService } from "../agent/agent-command.service";
 import { BrowserControlService } from "../agent/browser-control.service";
 import { AgentRunnerService } from "../agent/agent-runner.service";
 import { exportToGitHub, exportToJira, type GitHubExportConfig, type JiraExportConfig } from "../issue-export.service";
+import { SecureConfigService } from "../config/secure-config.service";
+import { GroqBugAssistantService } from "../ai/groq-bug-assistant.service";
+
+const JiraExportConfigSchema = z.object({
+  baseUrl: z.string().url(),
+  email: z.string().min(1),
+  token: z.string().min(1),
+  projectKey: z.string().min(1),
+  issueType: z.string().min(1).optional(),
+});
+
+const GitHubExportConfigSchema = z.object({
+  repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/),
+  token: z.string().min(1),
+});
+
+const SecureConfigKeySchema = z.enum(["jira-export", "github-export"]);
+
+const GroqBugDraftInputSchema = z.object({
+  projectName: z.string().optional(),
+  ticketLabel: z.string().optional(),
+  currentTitle: z.string().optional(),
+  currentDescription: z.string().optional(),
+  steps: z.array(z.object({
+    ts: z.number(),
+    summary: z.string(),
+    eventType: z.string(),
+  })).min(1),
+});
 
 function escapeHtml(value: string) {
   return value
@@ -195,22 +225,22 @@ function buildHtml(report: BugReportRecord, db: DatabaseManager) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(report.title || "Bug Report")}</title>
   <style>
-    body { font-family: Segoe UI, Arial, sans-serif; margin: 0; padding: 32px; background: #f5f7f8; color: #182024; }
-    .card { max-width: 980px; margin: 0 auto; background: #fff; border: 1px solid #d9e1e4; border-radius: 18px; padding: 28px; }
+    body { font-family: Inter, Segoe UI, Arial, sans-serif; margin: 0; padding: 32px; background: #F4F1EA; color: #1A1A1A; }
+    .card { max-width: 980px; margin: 0 auto; background: #fff; border: 1px solid #D9D2C8; border-radius: 18px; padding: 28px; }
     h1 { margin: 0 0 12px; font-size: 30px; }
     h2 { margin: 28px 0 12px; font-size: 18px; }
     p, li { line-height: 1.5; }
-    .meta { display: flex; gap: 12px; flex-wrap: wrap; color: #687378; font-size: 14px; margin-bottom: 12px; }
-    .pill { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; background: #edf2f4; border: 1px solid #d9e1e4; font-weight: 600; }
+    .meta { display: flex; gap: 12px; flex-wrap: wrap; color: #6B6560; font-size: 14px; margin-bottom: 12px; }
+    .pill { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; background: #EDE9E2; border: 1px solid #D9D2C8; font-weight: 600; }
     .steps, .screenshots { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
-    .steps li { display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: start; padding: 12px; border: 1px solid #d9e1e4; border-radius: 14px; background: #fdfefe; }
-    .step-index { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: #0f9f8f; color: #fff; font-weight: 700; }
+    .steps li { display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: start; padding: 12px; border: 1px solid #D9D2C8; border-radius: 14px; background: #FEFCF7; }
+    .step-index { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: #C84B31; color: #fff; font-weight: 700; }
     .step-summary { font-weight: 600; }
-    .step-meta, .path { color: #687378; font-size: 12px; margin-top: 4px; word-break: break-all; }
-    .muted { color: #687378; background: #edf2f4; padding: 12px; border-radius: 12px; border: 1px dashed #d9e1e4; }
-    .screenshot { margin: 0; padding: 12px; border: 1px solid #d9e1e4; border-radius: 14px; background: #fff; }
-    pre { white-space: pre-wrap; word-break: break-word; background: #f5f7f8; border: 1px solid #d9e1e4; padding: 14px; border-radius: 14px; }
-    a { color: #0f9f8f; }
+    .step-meta, .path { color: #6B6560; font-size: 12px; margin-top: 4px; word-break: break-all; }
+    .muted { color: #6B6560; background: #EDE9E2; padding: 12px; border-radius: 12px; border: 1px dashed #D9D2C8; }
+    .screenshot { margin: 0; padding: 12px; border: 1px solid #D9D2C8; border-radius: 14px; background: #fff; }
+    pre { white-space: pre-wrap; word-break: break-word; background: #F4F1EA; border: 1px solid #D9D2C8; padding: 14px; border-radius: 14px; }
+    a { color: #C84B31; }
   </style>
 </head>
 <body>
@@ -290,13 +320,15 @@ async function exportBugReport(
   const hydrated = hydrateReport(db, report);
 
   if (format === "jira") {
-    const result = await exportToJira(hydrated, options as JiraExportConfig);
+    const config = JiraExportConfigSchema.parse(options);
+    const result = await exportToJira(hydrated, config as JiraExportConfig);
     if (!result.success) return { success: false, reason: result.reason };
     return { success: true, issueUrl: result.issueUrl };
   }
 
   if (format === "github") {
-    const result = await exportToGitHub(hydrated, options as GitHubExportConfig);
+    const config = GitHubExportConfigSchema.parse(options);
+    const result = await exportToGitHub(hydrated, config as GitHubExportConfig);
     if (!result.success) return { success: false, reason: result.reason };
     return { success: true, issueUrl: result.issueUrl };
   }
@@ -322,6 +354,8 @@ export function registerIpcHandlers(
   const agentCommands = new AgentCommandService();
   const browserControl = new BrowserControlService(hub);
   const agentRunner = new AgentRunnerService(agentCommands, browserControl);
+  const secureConfig = new SecureConfigService();
+  const groqBugAssistant = new GroqBugAssistantService();
 
   ipcMain.handle(IPC.GET_PAIRING_TOKEN, () => pairing.getToken());
   ipcMain.handle(IPC.GET_CONNECTION_COUNT, () => hub.registry.connectionCount);
@@ -360,6 +394,21 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.SAVE_BUG_REPORT, (_e, report: BugReportUpsert) => db.insertBugReport(report));
   ipcMain.handle(IPC.GET_BUG_REPORTS, (_e, filters?: { projectId?: string; ticketId?: string }) => db.getBugReports(filters));
   ipcMain.handle(IPC.DELETE_BUG_REPORT, (_e, id: string) => db.deleteBugReport(id));
+  ipcMain.handle(IPC.GENERATE_BUG_DRAFT, async (_e, input: unknown) => {
+    const parsed = GroqBugDraftInputSchema.parse(input);
+    return groqBugAssistant.generateBugDraft(parsed);
+  });
+  ipcMain.handle(IPC.GET_SECURE_CONFIG, (_e, key: unknown) => {
+    const parsedKey = SecureConfigKeySchema.parse(key);
+    return secureConfig.get(parsedKey);
+  });
+  ipcMain.handle(IPC.SET_SECURE_CONFIG, (_e, key: unknown, value: unknown) => {
+    const parsedKey = SecureConfigKeySchema.parse(key);
+    const parsedValue = parsedKey === "jira-export"
+      ? JiraExportConfigSchema.parse(value)
+      : GitHubExportConfigSchema.parse(value);
+    return secureConfig.set(parsedKey, parsedValue);
+  });
 
   ipcMain.handle(IPC.GET_PROJECTS, () => db.getProjects());
   ipcMain.handle(IPC.CREATE_PROJECT, (_e, input) => db.createProject(input));
@@ -410,6 +459,22 @@ export function registerIpcHandlers(
     return exportBugReport(win, report, format, options, db);
   });
   ipcMain.handle(IPC.REVEAL_FILE, (_e, filepath: string) => shell.showItemInFolder(filepath));
+  ipcMain.handle(IPC.READ_IMAGE_FILE, (_e, filepath: string) => {
+    if (!existsSync(filepath)) return null;
+    const ext = filepath.split(".").pop()?.toLowerCase();
+    const mimeType = ext === "jpg" || ext === "jpeg"
+      ? "image/jpeg"
+      : ext === "gif"
+        ? "image/gif"
+        : ext === "webp"
+          ? "image/webp"
+          : "image/png";
+    const buffer = readFileSync(filepath);
+    return {
+      bytes: Uint8Array.from(buffer),
+      mimeType,
+    };
+  });
 
   hub.registry.onConnectionChange((count: number) => {
     if (!win.isDestroyed()) {

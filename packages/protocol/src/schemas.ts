@@ -7,7 +7,12 @@ import {
   COMMAND_TYPE, COMMAND_READ_DOM, COMMAND_GET_PAGE_CONTEXT,
 } from "./constants";
 
-const base = z.object({ type: z.string() });
+const base = z.object({
+  type: z.string(),
+  tabId: z.number().optional(),
+  tabUrl: z.string().optional(),
+  tabTitle: z.string().optional(),
+});
 export const HttpHeaderSchema = z.object({ name: z.string(), value: z.string() });
 
 export const BrowserEventSchema = z.discriminatedUnion("type", [
@@ -21,7 +26,12 @@ export const BrowserEventSchema = z.discriminatedUnion("type", [
   base.extend({ type: z.literal(EVENT_CONSOLE_LOG), level: z.enum(["log", "warn", "error", "info", "debug", "trace"]), message: z.string(), stack: z.string().optional(), timestamp: z.number() }),
   base.extend({ type: z.literal(EVENT_NETWORK_REQUEST), requestId: z.string(), method: z.string(), url: z.string(), requestHeaders: z.array(HttpHeaderSchema).optional(), requestBody: z.string().optional(), queryParams: z.record(z.string()).optional(), mimeType: z.string().optional() }),
   base.extend({ type: z.literal(EVENT_NETWORK_RESPONSE), requestId: z.string(), status: z.number(), statusText: z.string().optional(), durationMs: z.number(), responseHeaders: z.array(HttpHeaderSchema).optional(), responseBody: z.string().optional(), contentType: z.string().optional(), size: z.number().optional(), errorType: z.enum(["timeout", "abort", "cors", "network-error"]).optional() }),
-  base.extend({ type: z.literal(EVENT_SCREENSHOT_CAPTURED), fileId: z.string(), dataUrl: z.string().optional() }),
+  base.extend({
+    type: z.literal(EVENT_SCREENSHOT_CAPTURED),
+    fileId: z.string(),
+    dataUrl: z.string().optional(),
+    filepath: z.string().optional(),
+  }),
   base.extend({ type: z.literal(EVENT_DOM_HIGHLIGHTED), selector: z.string(), ok: z.boolean().default(true) }),
   base.extend({
     type: z.literal(EVENT_DOM_SNAPSHOT),

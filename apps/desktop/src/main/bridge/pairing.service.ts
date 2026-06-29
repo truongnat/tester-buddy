@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto";
+import { randomBytes, timingSafeEqual } from "crypto";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { app } from "electron";
@@ -27,6 +27,9 @@ export class PairingService {
   }
 
   validate(input: string) {
-    return input === this.token;
+    const left = Buffer.from(String(input), "utf-8");
+    const right = Buffer.from(this.token, "utf-8");
+    if (left.length !== right.length) return false;
+    return timingSafeEqual(left, right);
   }
 }

@@ -11,12 +11,21 @@ export class WebSocketHub {
   constructor(private pairing: PairingService) {}
 
   attach(server: HttpServer) {
-    this.wss = new WebSocketServer({ server });
+    this.wss = new WebSocketServer({ server, maxPayload: 256 * 1024 });
     this.wss.on("connection", (ws, req) => this.onConnection(ws, req));
   }
 
   private onConnection(ws: WebSocket, req: import("http").IncomingMessage) {
-    const token = new URL(req.url ?? "/", "http://localhost").searchParams.get("token");
+    const urlToken = new URL(req.url ?? "/", "http://localhost").searchParams.get("token");
+    const protocolHeader = req.headers["sec-websocket-protocol"];
+    const protocolToken = typeof protocolHeader === "string"
+      ? protocolHeader
+        .split(",")
+        .map((part) => part.trim())
+        .find((part) => part.startsWith("testerbuddy-token."))
+        ?.slice("testerbuddy-token.".length)
+      : undefined;
+    const token = protocolToken || urlToken;
 
     if (!token || !this.pairing.validate(token)) {
       ws.close(4001, "Unauthorized");
@@ -33,7 +42,10 @@ export class WebSocketHub {
         if (result.success) {
           this.registry.handleMessage(sessionId, result.data);
         } else {
-          console.log("[hub] ignoring non-BrowserEvent:", msg, result.error?.message);
+          console.warn("[hub] Ignoring invalid BrowserEvent payload", {
+            sessionId,
+            error: result.error?.message,
+          });
         }
       } catch {
         // ignore malformed JSON
@@ -54,4 +66,3 @@ export class WebSocketHub {
     }
   }
 }
-

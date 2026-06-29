@@ -13,7 +13,10 @@ declare global {
       saveBugReport: (report: unknown) => Promise<unknown>;
       getBugReports: (filters?: { projectId?: string; ticketId?: string }) => Promise<unknown[]>;
       deleteBugReport: (id: string) => Promise<void>;
+      generateBugDraft: (input: unknown) => Promise<unknown>;
       exportBug: (report: unknown, format?: "markdown" | "html" | "jira" | "github", options?: unknown) => Promise<{ success: boolean; filePath?: string; issueUrl?: string; reason?: string }>;
+      getSecureConfig: (key: string) => Promise<unknown>;
+      setSecureConfig: (key: string, value: unknown) => Promise<unknown>;
       getProjects: () => Promise<unknown[]>;
       createProject: (input: unknown) => Promise<unknown>;
       updateProject: (id: string, input: unknown) => Promise<unknown>;
@@ -33,6 +36,8 @@ declare global {
       typeElement: (selector: string, text: string) => Promise<unknown>;
       saveVideo: (buffer: Uint8Array, meta: { tabId: string; projectId: string; ticketId: string }) => Promise<{ filepath: string; media: unknown }>;
       revealFile: (filepath: string) => Promise<void>;
+      readImageFile: (filepath: string) => Promise<{ bytes: Uint8Array; mimeType: string } | null>;
+      readImageAsDataUrl: (filepath: string) => Promise<string | null>;
       onVideoSaved: (cb: (payload: { filepath: string }) => void) => (() => void);
       onVideoProgress: (cb: (payload: { progress: number }) => void) => (() => void);
       onEvent: (cb: (payload: unknown) => void) => (() => void);

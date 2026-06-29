@@ -61,7 +61,7 @@ export async function pickScreen(): Promise<Electron.DesktopCapturerSource | nul
     text-align: center;
     width: 280px;
   }
-  .card:hover { border-color: #0F9F8F; transform: scale(1.02); }
+  .card:hover { border-color: #C84B31; transform: scale(1.02); }
   .card img {
     width: 100%;
     height: 160px;

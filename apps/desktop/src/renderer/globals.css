@@ -1,21 +1,21 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fraunces:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── Precision Light theme ───────────────────────────────────────── */
+/* ── Claude Warm theme ───────────────────────────────────────────── */
 :root {
-  --background:    #F5F7F8;
+  --background:    #F4F1EA;
   --surface:       #FFFFFF;
-  --surface-muted: #EDF2F4;
-  --text:          #182024;
-  --text-muted:    #687378;
-  --border:        #D9E1E4;
-  --primary:       #0F9F8F;
-  --primary-hover: #0D8E7F;
+  --surface-muted: #EDE9E2;
+  --text:          #1A1A1A;
+  --text-muted:    #6B6560;
+  --border:        #D9D2C8;
+  --primary:       #C84B31;
+  --primary-hover: #B33E28;
   --error:         #E5383B;
   --success:       #1F9D55;
-  --warning:       #C27C0E;
+  --warning:       #D97706;
 
   --background-shadcn:  var(--surface);
   --foreground:         var(--text);
@@ -36,7 +36,7 @@
 
 /* ── Base reset ──────────────────────────────────────────────────── */
 @layer base {
-  * { box-sizing: border-box; border-color: #D9E1E4; }
+  * { box-sizing: border-box; border-color: #D9D2C8; }
   *::-webkit-scrollbar {
     width: 0;
     height: 0;
@@ -47,8 +47,8 @@
     scrollbar-width: none;
   }
   body {
-    background-color: #F5F7F8;
-    color: #182024;
+    background-color: #F4F1EA;
+    color: #1A1A1A;
     font-size: 14px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
@@ -69,6 +69,13 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+  .bg-dots {
+    background-image: radial-gradient(circle, #D0C8BC 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .font-display {
+    font-family: "Fraunces", Georgia, serif;
   }
 }
 

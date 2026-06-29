@@ -13,9 +13,17 @@ declare const __TESTERBUDDY_BUILD_VERSION__: string;
   const EVENT_NETWORK_RESPONSE = "network.response";
   const EVENT_CONSOLE_LOG = "console.log";
   const EVENT_NAVIGATION = "navigation";
+  const ACTIVE_KEY = "__testerbuddy_page_capture_active__";
+  const SENSITIVE_HEADER_PATTERN = /^(authorization|cookie|set-cookie|x-api-key|x-auth-token|proxy-authorization)$/i;
+  const SENSITIVE_BODY_PATTERN = /\b(eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+|Bearer\s+[A-Za-z0-9._-]+|sk_[A-Za-z0-9]{12,}|gsk_[A-Za-z0-9]{12,})\b/g;
+
+  function isCaptureActive(): boolean {
+    return Boolean((window as any)[ACTIVE_KEY]);
+  }
 
   function dispatch(detail: unknown) {
-    window.dispatchEvent(new CustomEvent(CHANNEL, { detail }));
+    if (!isCaptureActive()) return;
+    window.dispatchEvent(new CustomEvent(CHANNEL, { detail: JSON.stringify(detail) }));
   }
 
   function getStack(): string | undefined {
@@ -43,18 +51,22 @@ declare const __TESTERBUDDY_BUILD_VERSION__: string;
     }
   }
 
+  function redactSensitiveText(value: string): string {
+    return truncateBody(value.replace(SENSITIVE_BODY_PATTERN, "[redacted]"));
+  }
+
   function headersToArray(input: any): { name: string; value: string }[] | undefined {
     if (!input) return undefined;
     try {
       const result: { name: string; value: string }[] = [];
       if (typeof input.forEach === "function") {
-        input.forEach((v: string, k: string) => result.push({ name: k, value: v }));
+        input.forEach((v: string, k: string) => result.push({ name: k, value: SENSITIVE_HEADER_PATTERN.test(k) ? "[redacted]" : v }));
       } else if (Array.isArray(input)) {
-        for (const [name, value] of input) result.push({ name, value });
+        for (const [name, value] of input) result.push({ name, value: SENSITIVE_HEADER_PATTERN.test(name) ? "[redacted]" : value });
       } else if (typeof input === "object") {
         for (const key of Object.keys(input)) {
           const val = input[key];
-          if (typeof val === "string") result.push({ name: key, value: val });
+          if (typeof val === "string") result.push({ name: key, value: SENSITIVE_HEADER_PATTERN.test(key) ? "[redacted]" : val });
         }
       }
       return result.length > 0 ? result : undefined;
@@ -74,13 +86,13 @@ declare const __TESTERBUDDY_BUILD_VERSION__: string;
   function stringifyBody(body: unknown): string | undefined {
     if (!body) return undefined;
     try {
-      if (typeof body === "string") return truncateBody(body);
-      if (body instanceof URLSearchParams) return truncateBody(body.toString());
+      if (typeof body === "string") return redactSensitiveText(body);
+      if (body instanceof URLSearchParams) return redactSensitiveText(body.toString());
       if (body instanceof Blob) return `[Blob ${body.size}b ${body.type}]`;
       if (body instanceof ArrayBuffer) return `[ArrayBuffer ${body.byteLength}b]`;
       if (typeof body === "object") {
         const s = JSON.stringify(body);
-        return s ? truncateBody(s) : `[unstringifiable]`;
+        return s ? redactSensitiveText(s) : `[unstringifiable]`;
       }
       return `[${String(body)}]`;
     } catch {
@@ -94,7 +106,7 @@ declare const __TESTERBUDDY_BUILD_VERSION__: string;
     if (err.name === "TimeoutError") return "timeout";
     const m = String(err.message || "");
     if (m.includes("CORS") || m.includes("cross-origin")) return "cors";
-    if (m.includes("Failed to fetch") || m.includes("NetworkError") || m.includes("NetworkError")) return "network-error";
+    if (m.includes("Failed to fetch") || m.includes("NetworkError")) return "network-error";
     return undefined;
   }
 
@@ -194,7 +206,7 @@ declare const __TESTERBUDDY_BUILD_VERSION__: string;
           const cloned = res.clone();
           const text = await cloned.text();
           if (text) {
-            responseBody = truncateBody(text);
+            responseBody = redactSensitiveText(text);
             if (!size) size = text.length;
           }
         } catch {
@@ -300,7 +312,7 @@ declare const __TESTERBUDDY_BUILD_VERSION__: string;
         const text = this.responseText;
         if (text && typeof text === "string") {
           if (!ct || isTextContentType(ct)) {
-            resBody = truncateBody(text);
+            resBody = redactSensitiveText(text);
             size = text.length;
           }
         }
@@ -347,7 +359,7 @@ declare const __TESTERBUDDY_BUILD_VERSION__: string;
   function hookConsole(level: "log" | "warn" | "info" | "debug" | "trace") {
     const orig = (console as any)[level].bind(console);
     (console as any)[level] = function (...args: any[]) {
-      dispatch({ type: EVENT_CONSOLE_LOG, level, message: args.map(String).join(" "), stack: level === "trace" ? getStack() : undefined, timestamp: Date.now() });
+      dispatch({ type: EVENT_CONSOLE_LOG, level, message: redactSensitiveText(args.map(String).join(" ")), stack: level === "trace" ? getStack() : undefined, timestamp: Date.now() });
       orig(...args);
     };
   }
@@ -355,7 +367,7 @@ declare const __TESTERBUDDY_BUILD_VERSION__: string;
 
   const _error = console.error.bind(console);
   console.error = function (...args: any[]) {
-    dispatch({ type: EVENT_CONSOLE_LOG, level: "error", message: args.map(String).join(" "), stack: getStack(), timestamp: Date.now() });
+    dispatch({ type: EVENT_CONSOLE_LOG, level: "error", message: redactSensitiveText(args.map(String).join(" ")), stack: getStack(), timestamp: Date.now() });
     _error(...args);
   };
 
@@ -375,5 +387,3 @@ declare const __TESTERBUDDY_BUILD_VERSION__: string;
   window.history.pushState = wrapHistory("pushState");
   window.history.replaceState = wrapHistory("replaceState");
 })();
-
-

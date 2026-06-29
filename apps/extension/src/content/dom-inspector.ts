@@ -1,9 +1,25 @@
-export function getSelector(el: HTMLElement): string {
+function getElementTarget(target: EventTarget | null | undefined): HTMLElement | SVGElement | null {
+  if (target instanceof HTMLElement || target instanceof SVGElement) return target;
+  if (target instanceof Node) {
+    const parent = target.parentNode;
+    if (parent instanceof HTMLElement || parent instanceof SVGElement) return parent;
+  }
+  return null;
+}
+
+export function getSelector(target: EventTarget | null | undefined): string {
+  const el = getElementTarget(target);
+  if (!el) return "unknown";
   if (el.id) return `#${el.id}`;
-  if (el.dataset.testid) return `[data-testid="${el.dataset.testid}"]`;
+  if (el instanceof HTMLElement && el.dataset.testid) return `[data-testid="${el.dataset.testid}"]`;
   const tag = el.tagName.toLowerCase();
-  const cls = el.className && typeof el.className === "string"
-    ? "." + el.className.trim().split(/\s+/).slice(0, 2).join(".")
+  const className = typeof el.className === "string"
+    ? el.className
+    : el instanceof SVGElement && typeof el.className.baseVal === "string"
+      ? el.className.baseVal
+      : "";
+  const cls = className.trim()
+    ? "." + className.trim().split(/\s+/).slice(0, 2).join(".")
     : "";
   return `${tag}${cls}`;
 }

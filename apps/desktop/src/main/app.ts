@@ -3,6 +3,7 @@ import { join } from "path";
 import { existsSync, writeFileSync, mkdirSync, appendFileSync, statSync, renameSync } from "fs";
 import {
   EVENT_TAB_CONNECTED,
+  EVENT_TAB_SWITCHED,
   EVENT_TAB_UPDATED,
   EVENT_SCREENSHOT_CAPTURED,
 } from "@testerbuddy/protocol";
@@ -14,10 +15,12 @@ import { DatabaseManager } from "./db/database";
 import { convertToMp4 } from "./ffmpeg-converter";
 import { pickScreen } from "./screen-picker";
 import { cleanName } from "@testerbuddy/shared";
+import { loadEnvFromWorkspace } from "./config/env";
 
 try {
   const logFilePath = join(app.getPath("userData"), "main.log");
   const MAX_LOG_SIZE = 1024 * 1024;
+  const SENSITIVE_KEY_PATTERN = /authorization|cookie|set-cookie|token|secret|password|api[-_]?key/i;
   try {
     if (existsSync(logFilePath) && statSync(logFilePath).size > MAX_LOG_SIZE) {
       renameSync(logFilePath, `${logFilePath}.old`);
@@ -25,8 +28,21 @@ try {
   } catch {}
   writeFileSync(logFilePath, "--- APP START ---\n");
 
+  const redactForLog = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(redactForLog);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => (
+        [key, SENSITIVE_KEY_PATTERN.test(key) ? "[redacted]" : redactForLog(entry)]
+      )));
+    }
+    if (typeof value === "string" && value.length > 500) {
+      return `${value.slice(0, 500)}...[truncated]`;
+    }
+    return value;
+  };
+
   const logRedirect = (type: string, ...args: any[]) => {
-    const msg = args.map((a) => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ");
+    const msg = args.map((a) => typeof a === "object" ? JSON.stringify(redactForLog(a)) : String(a)).join(" ");
     appendFileSync(logFilePath, `[${new Date().toISOString()}] [${type}] ${msg}\n`);
   };
 
@@ -35,6 +51,7 @@ try {
 } catch {}
 
 async function bootstrap() {
+  loadEnvFromWorkspace();
   let win: BrowserWindow;
   const db = new DatabaseManager();
   await db.init();
@@ -79,8 +96,17 @@ async function bootstrap() {
 
   server.hub.registry.onEvent((sessionId, event: BrowserEvent) => {
     const ts = Date.now();
+    console.log("[desktop] event received", {
+      sessionId,
+      type: event.type,
+      tabId: "tabId" in event ? event.tabId : undefined,
+    });
 
-    if (event.type === EVENT_TAB_CONNECTED || event.type === EVENT_TAB_UPDATED) {
+    if (
+      event.type === EVENT_TAB_CONNECTED
+      || event.type === EVENT_TAB_SWITCHED
+      || event.type === EVENT_TAB_UPDATED
+    ) {
       db.updateSessionTab(sessionId, event.tabId, event.url);
     }
 
@@ -88,17 +114,6 @@ async function bootstrap() {
       const { fileId, dataUrl } = event;
       if (dataUrl) {
         try {
-          const context = db.getActiveCaptureContext();
-          if (!context?.projectId || !context.ticketId) {
-            throw new Error("Screenshot received without an active project/ticket context.");
-          }
-
-          const project = db.getProject(context.projectId);
-          const ticket = db.getTicket(context.ticketId);
-          if (!project || !ticket) {
-            throw new Error("Active project/ticket no longer exists.");
-          }
-
           const mimeMatch = dataUrl.match(/^data:(image\/\w+);base64,/);
           if (!mimeMatch) {
             throw new Error("Failed to parse screenshot dataUrl");
@@ -106,38 +121,46 @@ async function bootstrap() {
 
           const ext = mimeMatch[1].split("/")[1];
           const base64Data = dataUrl.slice(dataUrl.indexOf(",") + 1);
-          const mediaDir = join(
-            app.getPath("documents"),
-            "TesterBuddy",
-            "Project",
-            cleanName(project.key || project.id),
-            "Ticket",
-            cleanName(ticket.code || ticket.id),
-            "media"
-          );
+          const context = db.getActiveCaptureContext();
+          const project = context?.projectId ? db.getProject(context.projectId) : null;
+          const ticket = context?.ticketId ? db.getTicket(context.ticketId) : null;
+          const mediaDir = project && ticket
+            ? join(
+              app.getPath("documents"),
+              "TesterBuddy",
+              "Project",
+              cleanName(project.key || project.id),
+              "Ticket",
+              cleanName(ticket.code || ticket.id),
+              "media"
+            )
+            : join(app.getPath("documents"), "TesterBuddy", "images");
           if (!existsSync(mediaDir)) {
             mkdirSync(mediaDir, { recursive: true });
           }
 
           const filepath = join(mediaDir, `screenshot-${ts}-${cleanName(fileId)}.${ext}`);
           writeFileSync(filepath, base64Data, "base64");
-          const dbEvent = { ...event, dataUrl: undefined };
+          const dbEvent = { ...event, dataUrl: undefined, filepath };
           const eventId = db.insertEvent(sessionId, dbEvent, ts);
           db.insertScreenshot(fileId, eventId, filepath, ts);
-          const media = db.createMedia({
-            projectId: project.id,
-            ticketId: ticket.id,
-            kind: "screenshot",
-            filepath,
-            bugId: undefined,
-            thumbnailPath: undefined,
-            sourceSessionId: sessionId,
-            sourceEventId: eventId,
-          });
+          const media = project && ticket
+            ? db.createMedia({
+              projectId: project.id,
+              ticketId: ticket.id,
+              kind: "screenshot",
+              filepath,
+              bugId: undefined,
+              thumbnailPath: undefined,
+              sourceSessionId: sessionId,
+              sourceEventId: eventId,
+            })
+            : null;
 
           if (!win.isDestroyed()) {
             win.webContents.send(IPC.SESSION_EVENT, {
-              event: { ...event, dataUrl: undefined },
+              id: eventId,
+              event: dbEvent,
               ts,
               media,
             });
@@ -149,10 +172,10 @@ async function bootstrap() {
       }
     }
 
-    db.insertEvent(sessionId, event, ts);
+    const eventId = db.insertEvent(sessionId, event, ts);
 
     if (!win.isDestroyed()) {
-      win.webContents.send(IPC.SESSION_EVENT, { event, ts });
+      win.webContents.send(IPC.SESSION_EVENT, { id: eventId, event, ts });
     }
   });
 

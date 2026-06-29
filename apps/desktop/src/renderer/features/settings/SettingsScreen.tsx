@@ -25,11 +25,11 @@ export function SettingsScreen() {
 
   return (
     <div className="p-6 max-w-lg space-y-6">
-      <h1 className="font-semibold text-base text-text">Settings</h1>
+      <h1 className="font-display text-lg font-semibold text-text">Settings</h1>
 
       {/* Connection status */}
       <section className="space-y-2">
-        <h2 className="text-sm font-medium text-text">Bridge Status</h2>
+        <h2 className="font-display text-sm font-medium text-text">Bridge Status</h2>
         <div
           className={`flex items-center gap-3 px-3 py-2.5 rounded border text-sm font-medium ${
             connCount > 0
@@ -55,7 +55,7 @@ export function SettingsScreen() {
 
       {/* Pairing token */}
       <section className="space-y-2">
-        <h2 className="text-sm font-medium text-text">Pairing Token</h2>
+        <h2 className="font-display text-sm font-medium text-text">Pairing Token</h2>
         <p className="text-xs text-text-muted">
           Copy and paste into the TesterBuddy extension popup to connect.
         </p>
